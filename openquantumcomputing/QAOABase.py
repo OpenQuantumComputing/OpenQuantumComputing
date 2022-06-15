@@ -1,5 +1,6 @@
 from qiskit import *
 import numpy as np
+from scipy.optimize import minimize
 
 class QAOABase:
 
@@ -41,13 +42,12 @@ class QAOABase:
 
     def loss(self, angles, backend, depth, shots, noisemodel=None, params={}):
         """
-        loss function 
+        loss function
         :param params: additional parameters
         :return: an instance of the qiskti class QuantumCircuit
         """
-        self.opt_iterations +=1
-
-        circuit = createCircuit(angles, depth, options=options)
+        circuit = []
+        circuit.append(self.createCircuit(angles, depth, params=params))
 
         if backend.configuration().local:
             job = execute(circuit, backend=backend, noise_model=noisemodel, shots=shots)
@@ -71,7 +71,10 @@ class QAOABase:
         variances = []
 
         jres=job.result()
+        print(jres)
         counts_list=jres.get_counts()
+        if not isinstance(counts_list, list):
+            jres=[job.result()]
 
         for i, counts in enumerate(counts_list):
             n_shots = jres.results[i].shots
@@ -89,6 +92,22 @@ class QAOABase:
                 v = (E2-E**2)*n_shots/(n_shots-1)
             expectations.append(E)
             variances.append(v)
+        #else:
+        #   n_shots = jres.results.shots
+        #   E = 0
+        #   E2 = 0
+        #   for string in counts_list:
+        #       cost = self.cost(string, params)
+        #       E += cost*counts_list[string]
+        #       E2 += cost**2*counts_list[string];
+        #   if n_shots == 1:
+        #       v = 0
+        #   else:
+        #       E/=n_shots
+        #       E2/=n_shots
+        #       v = (E2-E**2)*n_shots/(n_shots-1)
+        #   expectations.append(E)
+        #   variances.append(v)
         return expectations, variances
 
     def interp(self, angles):
@@ -129,6 +148,7 @@ class QAOABase:
             self.Var = np.array(v).reshape(angles["beta"][2],angles["gamma"][2])
         else:
             self.E = np.zeros((angles["beta"][2],angles["gamma"][2]))
+            self.Var = np.zeros((angles["beta"][2],angles["gamma"][2]))
             b=-1
             for beta in beta_grid:
                 b+=1
@@ -136,45 +156,22 @@ class QAOABase:
                 for gamma in gamma_grid:
                     g+=1
                     params['name'] = str(b)+"_"+str(g)
-                    circuit = createCircuit(np.array((gamma,beta)), depth, options=params)
+                    circuit = createCircuit(np.array((gamma,beta)), depth, params=params)
                     job = start_or_retrieve_job(name+"_"+str(b)+"_"+str(g), backend, circuit, options={'shots' : shots})
-                    e,_ = self.measurementStatistics(job, params=params)
+                    e,v = self.measurementStatistics(job, params=params)
                     self.E[b,g] = -e[0]
+                    self.Var[b,g] = -v[0]
         if verbose:
             print("Calculating Energy landscape done")
 
-        return self.E
+    def local_opt(self, angles0, backend, shots, noisemodel=None, params={}, method='Nelder-Mead'):
+        """
 
-    def local_opt(self, backend, depth, shots, noisemodel=None, options={}, maxdepth=3):
+        :param angles0: initial guess
+        """
 
-        self.depth = 1
+        res = minimize(self.loss, x0 = angles0, method = method,
+                       args=(backend, int(len(angles0)/2), shots, noisemodel, params),
+                       options={'xatol': 1e-2, 'fatol': 1e-1, 'disp': True})
 
-        E = self.sample_cost_landscape(backend, dpeth, shots, noisemodel=noisemodel, options=options)
-
-        while self.continue_simulation():
-            # Reset the current book-keeping variables for each depth
-            self.init_optimization_statistic_params()
-
-            # Local optimisation
-
-            for rep in range(self.repeats):
-                print(f"Depth = {self.depth}, Rep = {rep + 1}")
-
-                # No need to keep track of the optimisation result, as the getval-function
-                # is required to update the member variables opt_values, opt_best_values, opt_params
-                # among all iterations, so that multiple repetitions can be performed and compared.
-                #
-                # The function save_best_params() will ensure the best of each repetition will
-                # be used further.
-                _ = optimize.minimize(self.getval,
-                                      x0 = x0,
-                                      method = self.optmethod,
-                                      options={'xatol': 1e-2, 'fatol': 1e-1, 'disp': True})
-
-            self.save_best_params()
-            self.depth += 1
-
-            # Extrapolate the parameters to the next depth
-            x0 = self.interp_init()
-
-        return Elandscape, self.params, self.E, self.best
+        return res.x

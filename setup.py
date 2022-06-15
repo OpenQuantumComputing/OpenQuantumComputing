@@ -11,5 +11,5 @@ setup(
     url='https://github.com/OpenQuantumComputing/OpenQuantumComputing',
     packages=['openquantumcomputing'],
     keywords='quantum computing, qaoa, qiskit',
-    install_requires=['qiskit','numpy'],
+    install_requires=['qiskit','numpy','scipy'],
 )
