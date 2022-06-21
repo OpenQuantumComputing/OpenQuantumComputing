@@ -1,4 +1,3 @@
-from qiskit import *
 import numpy as np
 from scipy.optimize import minimize
 
@@ -17,6 +16,10 @@ class QAOABase:
         self.costval={}
         self.gamma_grid=None
         self.beta_grid=None
+
+        self.g_it=0
+        self.g_values={}
+        self.g_angles={}
 
 ################################
 # functions to be implemented:
@@ -51,6 +54,7 @@ class QAOABase:
         :param params: additional parameters
         :return: an instance of the qiskti class QuantumCircuit
         """
+        self.g_it+=1
         circuit = []
         circuit.append(self.createCircuit(angles, depth, params=params))
 
@@ -60,6 +64,9 @@ class QAOABase:
             job = start_or_retrieve_job(name+"_"+str(opt_iterations), backend, circuit, options={'shots' : shots})
 
         e,v = self.measurementStatistics(job, params=params)
+
+        self.g_values[str(self.g_it)] = -e
+        self.g_angles[str(self.g_it)] = angles
 
         #opt_values[str(opt_iterations )] = e[0]
         #opt_angles[str(opt_iterations )] = angles
@@ -118,6 +125,20 @@ class QAOABase:
         else:
             job = start_or_retrieve_job("hist", backend, circ, options={'shots' : shots})
         return job.result().get_counts()
+
+    def random_init(self, gamma_bounds,beta_bounds,depth):
+        """
+        Enforces the bounds of gamma and beta based on the graph type.
+        :param gamma_bounds: Parameter bound tuple (min,max) for gamma
+        :param beta_bounds: Parameter bound tuple (min,max) for beta
+        :return: np.array on the form (gamma_1, beta_1, gamma_2, ...., gamma_d, beta_d)
+        """
+        gamma_list = np.random.uniform(gamma_bounds[0],gamma_bounds[1], size=depth)
+        beta_list = np.random.uniform(beta_bounds[0],beta_bounds[1], size=depth)
+        initial = np.empty((gamma_list.size + beta_list.size,), dtype=gamma_list.dtype)
+        initial[0::2] = gamma_list
+        initial[1::2] = beta_list
+        return initial
 
 
     def interp(self, angles):
@@ -188,11 +209,12 @@ class QAOABase:
         depth=int(len(angles0)/2)
 
         res = minimize(self.loss, x0 = angles0, method = method,
-                       args=(backend, depth, shots, noisemodel, params),
-                       options={'xatol': 1e-2, 'fatol': 1e-1, 'disp': True})
+                       args=(backend, depth, shots, noisemodel, params))
         return res
 
     def increase_depth(self, backend, shots, noisemodel=None, params={}, method='Nelder-Mead'):
+
+        repeats=1
 
         if self.current_depth == 0:
             if self.E is None:
@@ -200,14 +222,6 @@ class QAOABase:
             ind_Emin = np.unravel_index(np.argmin(self.E, axis=None), self.E.shape)
             angles0=np.array((self.gamma_grid[ind_Emin[1]], self.beta_grid[ind_Emin[0]]))
             self.angles_hist['d1_initial']=angles0
-
-            res = self.local_opt(angles0, backend, shots, noisemodel=noisemodel, params=params, method=method)
-            if not res.success:
-                raise Warning("Local optimization was not successful.", res)
-
-            self.angles_hist['d1_final']=res.x
-            self.costval['d1_final']=res.fun
-            self.current_depth=1
         else:
             gamma=self.angles_hist['d'+str(self.current_depth)+'_final'][::2]
             beta=self.angles_hist['d'+str(self.current_depth)+'_final'][1::2]
@@ -218,15 +232,25 @@ class QAOABase:
             angles0[1::2]=beta_interp
             self.angles_hist['d'+str(self.current_depth+1)+'_initial']=angles0
 
+        self.g_it=0
+        self.g_values={}
+        self.g_angles={}
+
+        #best_res=None
+        for rep in range(repeats):
+            if rep>0:
+                gamma_bounds=(0,np.pi)
+                beta_bounds=(0,np.pi)
+                angles0 = self.random_init(gamma_bounds, beta_bounds, self.current_depth+1)
             res = self.local_opt(angles0, backend, shots, noisemodel=noisemodel, params=params, method=method)
-            if not res.success:
-                raise Warning("Local optimization was not successful.", res)
+            print("rep=",rep, ":", res.fun)
 
-            self.angles_hist['d'+str(self.current_depth+1)+'_final']=res.x
-            self.costval['d'+str(self.current_depth+1)+'_final']=res.fun
-            self.current_depth+=1
+        ind = min(self.g_values, key=self.g_values.get)
+        self.angles_hist['d'+str(self.current_depth+1)+'_final']=self.g_angles[ind]
+        self.costval['d'+str(self.current_depth+1)+'_final']=self.g_values[ind]
+        #if not res.success:
+        #    raise Warning("Local optimization was not successful.", res)
 
 
-
-
+        self.current_depth+=1
 
