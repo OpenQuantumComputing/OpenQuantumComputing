@@ -67,7 +67,7 @@ class QAOABase:
         e,v = self.measurementStatistics(job, params=params)
 
         self.g_values[str(self.g_it)] = -e
-        self.g_angles[str(self.g_it)] = angles
+        self.g_angles[str(self.g_it)] = angles.copy()
 
         #opt_values[str(opt_iterations )] = e[0]
         #opt_angles[str(opt_iterations )] = angles
