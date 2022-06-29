@@ -90,7 +90,7 @@ class QAOABase:
                 E = 0
                 E2 = 0
                 for string in counts:
-                    # reverse string, get_counts() returns dict[str, int] where str is little endian
+                    # qiskit binary strings use little endian encoding, but our cost function expects big endian encoding. Therefore, we reverse the order
                     cost = self.cost(string[::-1], params)
                     E += cost*counts[string]
                     E2 += cost**2*counts[string];
@@ -108,8 +108,8 @@ class QAOABase:
             E = 0
             E2 = 0
             for string in counts_list:
+                # qiskit binary strings use little endian encoding, but our cost function expects big endian encoding. Therefore, we reverse the order
                 cost = self.cost(string[::-1], params)
-                # reverse string, get_counts() returns dict[str, int] where str is little endian
                 E += cost*counts_list[string]
                 E2 += cost**2*counts_list[string];
             if n_shots == 1:
