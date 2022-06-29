@@ -90,6 +90,7 @@ class QAOABase:
                 E = 0
                 E2 = 0
                 for string in counts:
+                    # reverse string, get_counts() returns dict[str, int] where str is little endian
                     cost = self.cost(string[::-1], params)
                     E += cost*counts[string]
                     E2 += cost**2*counts[string];
@@ -108,6 +109,7 @@ class QAOABase:
             E2 = 0
             for string in counts_list:
                 cost = self.cost(string[::-1], params)
+                # reverse string, get_counts() returns dict[str, int] where str is little endian
                 E += cost*counts_list[string]
                 E2 += cost**2*counts_list[string];
             if n_shots == 1:
