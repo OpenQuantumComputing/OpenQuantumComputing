@@ -221,49 +221,57 @@ def get_Pauli_string(binstrings, T, symbolic=False):
 
     return pauli_str
 
-def alg3(B, T):
+def get_A1(w, z):
+    if z[0]=='0' and w[0]=='0':
+        return I+Z
+    if (z[0]=='0' and w[0]=='1') or (z[0]=='1' and w[0]=='0'):
+        return X
+    return I-Z # z[0]==1 and w[0]==1
+
+def get_B1(w, z):
+    if z[0]=='0' and w[0]=='1':
+        return -Y
+    if z[0]=='1' and w[0]=='0':
+        return Y
+    return 0. # (z[0]==0 and w[0]==0) or (z[0]==1 and w[0]==1)
+
+def get_A_next(x, y, A_n, B_n):
+    if x=='0' and y=='0':
+        return 0.5*TensorProduct(A_n, I+Z)
+    if x=='0' and y=='1':
+        return 0.5*(TensorProduct(A_n, X)+TensorProduct(B_n, Y))
+    if x=='1' and y=='0':
+        return 0.5*(TensorProduct(A_n, X)-TensorProduct(B_n, Y))
+    return 0.5*TensorProduct(A_n, I-Z) # x==1 and y==1
+
+def get_B_next(x, y, A_n, B_n):
+    if x=='0' and y=='0':
+        return 0.5*(TensorProduct(B_n, I+Z))
+    if x=='0' and y=='1':
+        return 0.5*(TensorProduct(B_n, X)-TensorProduct(A_n, Y))
+    if x=='1' and y=='0':
+        return 0.5*(TensorProduct(B_n, X)+TensorProduct(A_n, Y))
+    return 0.5*(TensorProduct(B_n, I-Z)) # x==1 and y==1
+
+def get_A_n(w, z): 
+    A_curr=get_A1(w, z)
+    B_curr=get_B1(w, z)
+    for n in range(1, len(z)):
+        x=z[n]
+        y=w[n]
+        A_curr=get_A_next(x,y,A_curr,B_curr)
+        B_curr=get_B_next(x,y,A_curr,B_curr)
+    return A_curr
+
+def get_Pauli_string_with_algorithm3(B, T):
     pauli_string=0
     J=len(B)
     for j in range(J):
         for k in range(j+1, J):
             if not math.isclose(T[j,k], 0, abs_tol=1e-7):
-                w,z=B[j],B[k]
-                # A1
-                if z[0]=='0' and w[0]=='0':
-                    A_n=I+Z
-                elif (z[0]=='0' and w[0]=='1') or (z[0]=='1' and w[0]=='0'):
-                    A_n=X
-                else: # z[0]==1 and w[0]==1
-                    A_n=I-Z
-                # B1
-                if z[0]=='0' and w[0]=='1':
-                    B_n=-Y
-                elif z[0]=='1' and w[0]=='0':
-                    B_n=Y
-                else: # (z[0]==0 and w[0]==0) or (z[0]==1 and w[0]==1)
-                    B_n=0.
-                for n in range(1, len(z)):
-                    x,y=z[n],w[n]
-                    # A_(n+1)
-                    if x=='0' and y=='0':
-                        A_next=TensorProduct(A_n, I+Z)
-                    elif x=='0' and y=='1':
-                        A_next=(TensorProduct(A_n, X)+TensorProduct(B_n, Y))
-                    elif x=='1' and y=='0':
-                        A_next=(TensorProduct(A_n, X)-TensorProduct(B_n, Y))
-                    else: # x==1 and y==1
-                        A_next=TensorProduct(A_n, I-Z)
-                    # B_(n+1)
-                    if x=='0' and y=='0':
-                        B_next=(TensorProduct(B_n, I+Z))
-                    elif x=='0' and y=='1':
-                        B_next=(TensorProduct(B_n, X)-TensorProduct(A_n, Y))
-                    elif x=='1' and y=='0':
-                        B_next=(TensorProduct(B_n, X)+TensorProduct(A_n, Y))
-                    else: # x==1 and y==1
-                        B_next=(TensorProduct(B_n, I-Z))
-                    A_n=0.5*A_next
-                    B_n=0.5*B_next
+                w=B[j]
+                z=B[k]
+                A_n=get_A_n(w, z) # recursively compute A_n
                 pauli_string+=A_n*T[j,k]
     return pauli_string
 
