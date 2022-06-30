@@ -14,6 +14,7 @@ class QAOABase:
         self.Var=None
         self.current_depth=0 # depth at which local optimization has been done
         self.angles_hist={}
+        self.num_fval={} # number of function evaluations
         self.costval={}
         self.gamma_grid=None
         self.beta_grid=None
@@ -203,7 +204,7 @@ class QAOABase:
     def get_current_deptgh(self):
         return self.current_depth
 
-    def local_opt(self, angles0, backend, shots, noisemodel=None, params={}, method='Nelder-Mead'):
+    def local_opt(self, angles0, backend, shots, noisemodel=None, params={}, method='COBYLA'):
         """
 
         :param angles0: initial guess
@@ -215,7 +216,7 @@ class QAOABase:
                        args=(backend, depth, shots, noisemodel, params))
         return res
 
-    def increase_depth(self, backend, shots, noisemodel=None, params={}, method='Nelder-Mead'):
+    def increase_depth(self, backend, shots, noisemodel=None, params={}, method='COBYLA'):
 
         repeats=1
 
@@ -246,6 +247,7 @@ class QAOABase:
                 beta_bounds=(0,np.pi)
                 angles0 = self.random_init(gamma_bounds, beta_bounds, self.current_depth+1)
             res = self.local_opt(angles0, backend, shots, noisemodel=noisemodel, params=params, method=method)
+            self.num_fval['d'+str(self.current_depth+1)]=res.nfev
             print("rep=",rep, ":", res.fun)
 
         ind = min(self.g_values, key=self.g_values.get)
