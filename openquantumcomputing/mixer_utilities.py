@@ -257,10 +257,8 @@ def get_A_n(w, z):
     A_curr=get_A1(w, z)
     B_curr=get_B1(w, z)
     for n in range(1, len(z)):
-        x=z[n]
-        y=w[n]
-        A_curr=get_A_next(x,y,A_curr,B_curr)
-        B_curr=get_B_next(x,y,A_curr,B_curr)
+        x, y=z[n], w[n]
+        A_curr, B_curr=get_A_next(x,y,A_curr,B_curr), get_B_next(x,y,A_curr,B_curr)
     return A_curr
 
 def get_Pauli_string_with_algorithm3(B, T):
