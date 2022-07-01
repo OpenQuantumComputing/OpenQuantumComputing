@@ -2,6 +2,8 @@ from qiskit import *
 import numpy as np
 from scipy.optimize import minimize
 
+from openquantumcomputing.Statistic import Statistic
+
 class QAOABase:
 
     def __init__(self):#,params = None):
@@ -87,39 +89,21 @@ class QAOABase:
             expectations = []
             variances = []
             for i, counts in enumerate(counts_list):
-                n_shots = jres.results[i].shots
-                E = 0
-                E2 = 0
+                stat=Statistic()
                 for string in counts:
                     # qiskit binary strings use little endian encoding, but our cost function expects big endian encoding. Therefore, we reverse the order
                     cost = self.cost(string[::-1], params)
-                    E += cost*counts[string]
-                    E2 += cost**2*counts[string];
-                if n_shots == 1:
-                    v = 0
-                else:
-                    E/=n_shots
-                    E2/=n_shots
-                    v = (E2-E**2)*n_shots/(n_shots-1)
-                expectations.append(E)
-                variances.append(v)
+                    stat.add_sample(cost, counts[string])
+                expectations.append(stat.get_E())
+                variances.append(stat.get_Variance())
             return expectations, variances
         else:
-            n_shots = jres.results[0].shots
-            E = 0
-            E2 = 0
+            stat=Statistic()
             for string in counts_list:
                 # qiskit binary strings use little endian encoding, but our cost function expects big endian encoding. Therefore, we reverse the order
                 cost = self.cost(string[::-1], params)
-                E += cost*counts_list[string]
-                E2 += cost**2*counts_list[string];
-            if n_shots == 1:
-                v = 0
-            else:
-                E/=n_shots
-                E2/=n_shots
-                v = (E2-E**2)*n_shots/(n_shots-1)
-            return E,v
+                stat.add_sample(cost, counts_list[string])
+            return stat.get_E(), stat.get_Variance()
 
     def hist(self, angles, backend, shots, noisemodel=None, params={}):
         depth=int(len(angles)/2)
