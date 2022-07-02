@@ -64,9 +64,7 @@ class QAOABase:
         circuit = self.createCircuit(angles, depth, params=params)
 
         n_target=shots
-
         self.stat.reset()
-
         shots_taken=0
 
         for i in range(3):
@@ -76,10 +74,13 @@ class QAOABase:
                 job = start_or_retrieve_job(name+"_"+str(opt_iterations), backend, circuit, options={'shots' : shots})
             shots_taken+=shots
             _,_ = self.measurementStatistics(job, params=params)
-            v=self.stat.get_Variance()
-            shots=int((np.sqrt(v)/precision)**2)-shots_taken
-            if shots<=0:
+            if precision is None:
                 break
+            else:
+                v=self.stat.get_Variance()
+                shots=int((np.sqrt(v)/precision)**2)-shots_taken
+                if shots<=0:
+                    break
 
         self.num_shots['d'+str(self.current_depth+1)]+=shots_taken
 
