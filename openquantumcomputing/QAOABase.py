@@ -15,11 +15,13 @@ class QAOABase:
         self.E=None
         self.Var=None
         self.current_depth=0 # depth at which local optimization has been done
-        self.angles_hist={}
-        self.num_fval={} # number of function evaluations
-        self.costval={}
+        self.angles_hist={} # initial and final angles during optimization per depth
+        self.num_fval={} # number of function evaluations per depth
+        self.num_shots={} # number of total shots taken for local optimization per depth
+        self.costval={} # optimal cost values per depth
         self.gamma_grid=None
         self.beta_grid=None
+        self.stat=Statistic()
 
         self.g_it=0
         self.g_values={}
@@ -52,29 +54,41 @@ class QAOABase:
 # generic functions
 ################################
 
-    def loss(self, angles, backend, depth, shots, noisemodel=None, params={}):
+    def loss(self, angles, backend, depth, shots, precision, noisemodel, params):
         """
         loss function
         :param params: additional parameters
         :return: an instance of the qiskti class QuantumCircuit
         """
         self.g_it+=1
-        circuit = []
-        circuit.append(self.createCircuit(angles, depth, params=params))
+        circuit = self.createCircuit(angles, depth, params=params)
 
-        if backend.configuration().local:
-            job = execute(circuit, backend=backend, noise_model=noisemodel, shots=shots)
-        else:
-            job = start_or_retrieve_job(name+"_"+str(opt_iterations), backend, circuit, options={'shots' : shots})
+        n_target=shots
 
-        e,v = self.measurementStatistics(job, params=params)
+        self.stat.reset()
 
-        self.g_values[str(self.g_it)] = -e
+        shots_taken=0
+
+        for i in range(3):
+            if backend.configuration().local:
+                job = execute(circuit, backend=backend, noise_model=noisemodel, shots=shots)
+            else:
+                job = start_or_retrieve_job(name+"_"+str(opt_iterations), backend, circuit, options={'shots' : shots})
+            shots_taken+=shots
+            _,_ = self.measurementStatistics(job, params=params)
+            v=self.stat.get_Variance()
+            shots=int((np.sqrt(v)/precision)**2)-shots_taken
+            if shots<=0:
+                break
+
+        self.num_shots['d'+str(self.current_depth+1)]+=shots_taken
+
+        self.g_values[str(self.g_it)] = -self.stat.get_E()
         self.g_angles[str(self.g_it)] = angles.copy()
 
         #opt_values[str(opt_iterations )] = e[0]
         #opt_angles[str(opt_iterations )] = angles
-        return -e
+        return -self.stat.get_E()
 
     def measurementStatistics(self, job, params):
         """
@@ -89,21 +103,20 @@ class QAOABase:
             expectations = []
             variances = []
             for i, counts in enumerate(counts_list):
-                stat=Statistic()
+                self.stat.reset()
                 for string in counts:
                     # qiskit binary strings use little endian encoding, but our cost function expects big endian encoding. Therefore, we reverse the order
                     cost = self.cost(string[::-1], params)
-                    stat.add_sample(cost, counts[string])
-                expectations.append(stat.get_E())
-                variances.append(stat.get_Variance())
+                    self.stat.add_sample(cost, counts[string])
+                expectations.append(self.stat.get_E())
+                variances.append(self.stat.get_Variance())
             return expectations, variances
         else:
-            stat=Statistic()
             for string in counts_list:
                 # qiskit binary strings use little endian encoding, but our cost function expects big endian encoding. Therefore, we reverse the order
                 cost = self.cost(string[::-1], params)
-                stat.add_sample(cost, counts_list[string])
-            return stat.get_E(), stat.get_Variance()
+                self.stat.add_sample(cost, counts_list[string])
+            return self.stat.get_E(), self.stat.get_Variance()
 
     def hist(self, angles, backend, shots, noisemodel=None, params={}):
         depth=int(len(angles)/2)
@@ -144,7 +157,7 @@ class QAOABase:
         w=np.arange(0,depth+1)
         return w/depth*tmp[:-1] + (depth-w)/depth*tmp[1:]
 
-    def sample_cost_landscape(self, backend, shots, noisemodel=None, params={}, verbose=True, angles={"gamma": [0,2*np.pi,20], "beta": [0,2*np.pi,20]}):
+    def sample_cost_landscape(self, backend, shots=1024, noisemodel=None, params={}, verbose=True, angles={"gamma": [0,2*np.pi,20], "beta": [0,2*np.pi,20]}):
         if verbose:
             print("Calculating Energy landscape for depth p=1...")
 
@@ -188,7 +201,7 @@ class QAOABase:
     def get_current_deptgh(self):
         return self.current_depth
 
-    def local_opt(self, angles0, backend, shots, noisemodel=None, params={}, method='COBYLA'):
+    def local_opt(self, angles0, backend, shots, precision, noisemodel=None, params={}, method='COBYLA'):
         """
 
         :param angles0: initial guess
@@ -196,13 +209,20 @@ class QAOABase:
 
         depth=int(len(angles0)/2)
 
+        self.num_shots['d'+str(self.current_depth+1)]=0
         res = minimize(self.loss, x0 = angles0, method = method,
-                       args=(backend, depth, shots, noisemodel, params))
+                       args=(backend, depth, shots, precision, noisemodel, params))
         return res
 
-    def increase_depth(self, backend, shots, noisemodel=None, params={}, method='COBYLA'):
+    def increase_depth(self, backend, shots=1024, precision=None, noisemodel=None, params={}, method='COBYLA'):
+        """
+        sample cost landscape
 
-        repeats=1
+        :param backend: backend
+        :param shots: if precision=None, the number of samples taken
+                      if precision!=None, the minimum number of samples taken
+        :param precision: precision to reach for expectation value based on error=variance/sqrt(shots)
+        """
 
         if self.current_depth == 0:
             if self.E is None:
@@ -224,21 +244,15 @@ class QAOABase:
         self.g_values={}
         self.g_angles={}
 
-        #best_res=None
-        for rep in range(repeats):
-            if rep>0:
-                gamma_bounds=(0,np.pi)
-                beta_bounds=(0,np.pi)
-                angles0 = self.random_init(gamma_bounds, beta_bounds, self.current_depth+1)
-            res = self.local_opt(angles0, backend, shots, noisemodel=noisemodel, params=params, method=method)
-            self.num_fval['d'+str(self.current_depth+1)]=res.nfev
-            print("rep=",rep, ":", res.fun)
+        res = self.local_opt(angles0, backend, shots, precision, noisemodel=noisemodel, params=params, method=method)
+        if not res.success:
+            raise Warning("Local optimization was not successful.", res)
+        self.num_fval['d'+str(self.current_depth+1)]=res.nfev
+        print("cost(depth=",self.current_depth+1,")=", res.fun)
 
         ind = min(self.g_values, key=self.g_values.get)
         self.angles_hist['d'+str(self.current_depth+1)+'_final']=self.g_angles[ind]
         self.costval['d'+str(self.current_depth+1)+'_final']=self.g_values[ind]
-        #if not res.success:
-        #    raise Warning("Local optimization was not successful.", res)
 
 
         self.current_depth+=1

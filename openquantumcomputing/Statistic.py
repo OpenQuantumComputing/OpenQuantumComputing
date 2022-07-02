@@ -4,6 +4,9 @@ class Statistic:
     """
 
     def __init__(self):
+        self.reset()
+
+    def reset(self):
         self.W=0
         self.E=0
         self.S=0
