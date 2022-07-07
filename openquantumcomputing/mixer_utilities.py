@@ -301,3 +301,86 @@ def matrix_to_sympy(H):
                 tp=TensorProduct(tp, pauli_map[pauli_str[i]])
         pauli_str_sympy+=float(number)*tp
     return pauli_str_sympy
+
+def get_operators_from_tensor_product(tensor_product):
+    operators = []
+    while not isinstance(tensor_product, (Pauli, core.numbers.One)):
+        tensor_product, operator = tensor_product.args
+        operators.insert(0, operator)
+    operators.insert(0, tensor_product)
+    return operators
+
+def add_U(array, operators):
+    for i, operator in enumerate(operators):
+        if operator==Pauli(1): # X
+            array.append(("h", i))
+        elif operator==Pauli(2): # Y
+            array.append(("s", i))
+            array.append(("h", i))
+            
+def get_cx_pairs(operators):
+    pairs=[]
+    j=None
+    for i, operator in enumerate(operators):
+        if i!=0 and isinstance(operator, Pauli) and j!=None:
+            pairs.append((j, i))
+        if isinstance(operator, Pauli): 
+            j=i
+    return pairs
+            
+def add_middle_part(array, operators, angle):
+    pairs=get_cx_pairs(operators)
+    
+    # if only one operator in operators, add rz gate on correct index
+    if len(pairs)==0:
+        for i, operator in enumerate(operators):
+            if isinstance(operator, Pauli):
+                array.append(("rz", -2.0 * float(angle), i))
+                break
+    else:
+        for pair in pairs: 
+            array.append(("cx", pair[0], pair[1]))
+        array.append(("rz", -2.0*float(angle), pairs[-1][1]))
+        for pair in pairs[::-1]:
+            array.append(("cx", pair[0], pair[1]))
+
+def add_U_dagger(array, operators):
+    for i, operator in enumerate(operators):
+        if operator==Pauli(1): # X
+            array.append(("h", i))
+        elif operator==Pauli(2): # Y
+            array.append(("h", i))
+            array.append(("sdg", i))
+
+def create_circuit_array(H):
+    array=[]
+    if H!=0:
+        H_args=Add.make_args(H)
+        if len(H_args)==1: # if only one term in H
+            H_args=[H_args[0]] 
+        for pauli_string in H_args:
+            # remove all symbols from expression, and split pauli string to (float, Symbol, TensorProduct)
+            mul_args=list(filter(lambda x: not isinstance(x, Symbol), list(Mul.make_args(pauli_string))))
+            angle,tensor_prod=mul_args
+            
+            # split tensor product expression on each tensor product
+            operators=get_operators_from_tensor_product(tensor_prod)
+            
+            # add gates
+            add_U(array, operators)
+            add_middle_part(array, operators, angle)
+            add_U_dagger(array, operators)
+    return array
+
+def create_circuit_from_array(circuit, array, parameter):
+    for row in array:
+        if row[0]=="h":
+            circuit.h(row[1])
+        elif row[0]=="cx":
+            circuit.cx(row[1], row[2])
+        elif row[0]=="rz":
+            circuit.rz(row[1]*parameter, row[2])
+        elif row[0]=="s":
+            circuit.s(row[1])
+        elif row[0]=="sdg":
+            circuit.sdg(row[1])
