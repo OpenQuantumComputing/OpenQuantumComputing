@@ -287,3 +287,17 @@ def get_H(stringlist,T,simplify=True, symbolic=False, verbose=False):
         print("#sqg, #cnots=",num_Cnot(H, symbolic=symbolic))
     return H
 
+def matrix_to_sympy(H):
+    """ Decompose matrix H to sympy pauli string """
+    array=[i.split("*") for i in decompose(H).replace(" ", "").split("+")[1:]]
+    pauli_str_sympy=0
+    pauli_map={"I":1, "X":Pauli(1), "Y":Pauli(2), "Z":Pauli(3)}
+    for number, pauli_str in array:
+        if len(pauli_str)==1:
+            tp=pauli_map[pauli_str]
+        else:
+            tp=TensorProduct(pauli_map[pauli_str[0]], pauli_map[pauli_str[1]])
+            for i in range(2, len(pauli_str)):
+                tp=TensorProduct(tp, pauli_map[pauli_str[i]])
+        pauli_str_sympy+=float(number)*tp
+    return pauli_str_sympy
