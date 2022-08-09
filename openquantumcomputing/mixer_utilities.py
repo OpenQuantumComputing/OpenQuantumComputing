@@ -3,6 +3,7 @@ from sympy.physics.quantum import TensorProduct
 from sympy.physics.paulialgebra import Pauli, evaluate_pauli_product
 from binsymbols import *
 from sympy import *
+from utilities import decompose
 import itertools
 import math
 
@@ -301,3 +302,106 @@ def matrix_to_sympy(H):
                 tp=TensorProduct(tp, pauli_map[pauli_str[i]])
         pauli_str_sympy+=float(number)*tp
     return pauli_str_sympy
+
+class Circuit_maker:
+    """ class for creating circuit from sympy expression """
+    def __init__(self, H):
+        self.array = self.__create_array(H)
+
+    def add_gates(self, circuit, parameter):
+        """ iterate over self.array and add gates to circuit,
+            parameter is the rotation angle used in the rz gate """
+        for row in self.array:
+            if row[0]=="h":
+                circuit.h(row[1])
+            elif row[0]=="cx":
+                circuit.cx(row[1], row[2])
+            elif row[0]=="rz":
+                circuit.rz(row[1]*parameter, row[2])
+            elif row[0]=="s":
+                circuit.s(row[1])
+            elif row[0]=="sdg":
+                circuit.sdg(row[1])
+
+    def __create_array(self, H):
+        """ create self.array which holds instructions of where gates should be placed,
+            corresponding to equation 33 in Fuchs et al. (arXiv:2203.06095).
+            H is a sympy expression and could be for example the mixing operator, H_m """
+        array=[]
+        if H!=0:
+            commuting_terms=Add.make_args(H)
+            for expr in commuting_terms:
+                # remove artificially introduced symbols from H, which was introduced to keep
+                # commuting terms separated. Example: expr = c(4*II + XX) -> H_args = [4*II, XX].
+                H_args=Add.make_args(list(filter(lambda x: not isinstance(x, Symbol), list(Mul.make_args(expr))))[0])
+                if len(H_args)==1: # if only one term in H
+                    H_args=[H_args[0]] 
+
+                for pauli_string in H_args:
+                    # remove all symbols from expression, and split pauli string to (float, Symbol, TensorProduct)
+                    mul_args=list(filter(lambda x: not isinstance(x, Symbol), list(Mul.make_args(pauli_string))))
+                    angle,tensor_prod=mul_args
+                    
+                    # split tensor product expression on each tensor product
+                    operators=self.__get_operators_from_tensor_product(tensor_prod)
+                    
+                    # add gates to array
+                    self.__add_U(array, operators)
+                    self.__add_middle_part(array, operators, angle)
+                    self.__add_U_dagger(array, operators)
+        return array
+
+    def __get_operators_from_tensor_product(self, tensor_product):
+        """ split tensor product expr on each tensor product """
+        operators=[]
+        while not isinstance(tensor_product, (Pauli, core.numbers.One)):
+            tensor_product, operator = tensor_product.args
+            operators.insert(0, operator)
+        operators.insert(0, tensor_product)
+        return operators
+
+    def __add_U(self, array, operators):
+        """ add gates corresponding to block U in eq. 33 """
+        for i, operator in enumerate(operators):
+            if operator==Pauli(1): # X
+                array.append(("h", i))
+            elif operator==Pauli(2): # Y
+                array.append(("s", i))
+                array.append(("h", i))
+
+    def __add_middle_part(self, array, operators, angle):
+        """ add cnots and rz gate corresponding to the middle part in eq. 33 """ 
+        pairs=self.__get_cx_pairs(operators)
+        
+        # if only one operator in operators, add rz gate on correct index (do not add cx gates)
+        if len(pairs)==0:
+            for i, operator in enumerate(operators):
+                if isinstance(operator, Pauli):
+                    array.append(("rz", -2.0 * float(angle), i))
+                    break
+        else:
+            for pair in pairs: 
+                array.append(("cx", pair[0], pair[1]))
+            array.append(("rz", -2.0*float(angle), pairs[-1][1]))
+            for pair in pairs[::-1]:
+                array.append(("cx", pair[0], pair[1]))
+                
+    def __add_U_dagger(self, array, operators):
+        """ add gates corresponding to block dagger(U) in eq. 33 """
+        for i, operator in enumerate(operators):
+            if operator==Pauli(1): # X
+                array.append(("h", i))
+            elif operator==Pauli(2): # Y
+                array.append(("h", i))
+                array.append(("sdg", i))
+
+    def __get_cx_pairs(self, operators):
+        """ return list of indices of where cx gates should be placed """ 
+        pairs=[]
+        j=None
+        for i, operator in enumerate(operators):
+            if i!=0 and isinstance(operator, Pauli) and j!=None:
+                pairs.append((j, i))
+            if isinstance(operator, Pauli): 
+                j=i
+        return pairs
