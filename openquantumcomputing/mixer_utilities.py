@@ -3,7 +3,6 @@ from sympy.physics.quantum import TensorProduct
 from sympy.physics.paulialgebra import Pauli, evaluate_pauli_product
 from binsymbols import *
 from sympy import *
-from sympy import core
 from utilities import decompose
 import itertools
 import math
@@ -332,6 +331,8 @@ class Circuit_maker:
         if H!=0:
             commuting_terms=Add.make_args(H)
             for expr in commuting_terms:
+                # remove artificially introduced symbols from H, which was introduced to keep
+                # commuting terms separated. Example: expr = c(4*II + XX) -> H_args = [4*II, XX].
                 H_args=Add.make_args(list(filter(lambda x: not isinstance(x, Symbol), list(Mul.make_args(expr))))[0])
                 if len(H_args)==1: # if only one term in H
                     H_args=[H_args[0]] 
