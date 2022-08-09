@@ -574,42 +574,25 @@ def decompose6(H):
                                 ps+=" + "+str(a)+"*"+str(label)
     return ps
 
-def decompose(H, onlyIZ=False):
-    nq=np.log2(H.shape[0])
-    print("dim=",nq)
-    if nq==1:
-        if onlyIZ:
-            ps=decompose1_IZ(H)
-        else:
-            ps=decompose1(H)
-    elif nq==2:
-        if onlyIZ:
-            ps=decompose2_IZ(H)
-        else:
-            ps=decompose2(H)
-    elif nq==3:
-        if onlyIZ:
-            ps=decompose3_IZ(H)
-        else:
-            ps=decompose3(H)
-    elif nq==4:
-        if onlyIZ:
-            ps=decompose4_IZ(H)
-        else:
-            ps=decompose4(H)
-    elif nq==5:
-        if onlyIZ:
-            ps=decompose5_IZ(H)
-        else:
-            ps=decompose5(H)
-    elif nq==6:
-        if onlyIZ:
-            ps=decompose6_IZ(H)
-        else:
-            ps=decompose6(H)
-    else:
+def decompose(H):
+    """ decompose H into string of pauli matrices,
+        H: numpy matrix or numpy array corresponding to diagonal of a matrix"""
+    nq=int(np.log2(H.shape[0]))
+    if nq > 6:
         raise Exception("The method is not implemented for dim>6.")
-    return ps
+
+    # if H is a 1dim array corresponding to the diagonal of a matrix
+    # we only need I and Z matrices to decompose
+    onlyIZ=False
+    if H.ndim==1:
+        H = np.diag(H)
+        onlyIZ=True
+
+    # call correct function according to dim(H)
+    function_name=f"decompose{nq}(H)"
+    if onlyIZ:
+        function_name=f"decompose{nq}_IZ(H)"
+    return eval(function_name)
 
 def get_depth_and_numCX(circuit):
     
