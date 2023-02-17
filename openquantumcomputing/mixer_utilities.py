@@ -142,32 +142,45 @@ def HtoString(H, symbolic=False):
             ret+=" "
     return ret
 
+
+def num_Cnot_TPoP(item, symbolic=False):
+    tps=PauliStringTP(excludeI=True)
+    tps.get_items_PS(item)
+    tmp=len(tps.items)
+    if tmp==1:
+        sqg=1
+        cnot=0
+    elif tmp>1:
+        sqg=0
+        cnot=2*(tmp-1)
+    return sqg, cnot
+
 def num_Cnot(H, symbolic=False):
     sqg=0
     cnot=0
-    for item in H.args:### go through all items of the sum (Pauli strings)
-#         print(type(item))
-        if isinstance(item, Mul):### remove float
-            if symbolic:
-                fval,_,item = item.args
-            else:
-                if len(item.args)>2:
-                    fval,tmp,item = item.args
-                    if not math.isclose(fval,0,abs_tol=1e-7):
-                        raise AssertionError("Encountered imaginary part that is not close to zero, aborting!", fval, tmp, item)
+    if isinstance(H, TensorProduct) or isinstance(H, Pauli):### go through Pauli string
+        sqg_, cnot_ = num_Cnot_TPoP(H, symbolic=symbolic)
+        sqg+=sqg_
+        cnot+=cnot_
+    else:
+        for item in H.args:### go through all items of the sum (Pauli strings)
+            if isinstance(item, Mul):### remove float
+                if symbolic:
+                    fval,_,item = item.args
                 else:
-                    fval,item = item.args
-                    if math.isclose(fval,0,abs_tol=1e-7):
-                        item=None
-                        print("depug: close to zero", fval, item)
-        if isinstance(item, TensorProduct) or isinstance(item, Pauli):### go through Pauli string
-            tps=PauliStringTP(excludeI=True)
-            tps.get_items_PS(item)
-            tmp=len(tps.items)
-            if tmp==1:
-                sqg+=1
-            elif tmp>1:
-                cnot+=2*(tmp-1)
+                    if len(item.args)>2:
+                        fval,tmp,item = item.args
+                        if not math.isclose(fval,0,abs_tol=1e-7):
+                            raise AssertionError("Encountered imaginary part that is not close to zero, aborting!", fval, tmp, item)
+                    else:
+                        fval,item = item.args
+                        if math.isclose(fval,0,abs_tol=1e-7):
+                            item=None
+                            print("depug: close to zero", fval, item)
+            if isinstance(item, TensorProduct) or isinstance(item, Pauli):### go through Pauli string
+                sqg_, cnot_ = num_Cnot_TPoP(item, symbolic=symbolic)
+                sqg+=sqg_
+                cnot+=cnot_
     return sqg,cnot
 
 def get_g(binstrings):
