@@ -3,6 +3,7 @@ from sympy.physics.quantum import TensorProduct
 from sympy.physics.paulialgebra import Pauli, evaluate_pauli_product
 from binsymbols import *
 from sympy import *
+from sympy.printing.latex import LatexPrinter, print_latex
 from openquantumcomputing.utilities import decompose
 import itertools
 import math
@@ -11,6 +12,7 @@ X=Pauli(1)
 Y=Pauli(2)
 Z=Pauli(3)
 I=1
+O=sympy.symbols('O')
 
 def hamming(s1, s2):
     return sum(c1 != c2 for c1, c2 in zip(s1, s2))
@@ -106,6 +108,8 @@ def TPoPtoString(item):
     tps=PauliStringTP()
     tps.get_items_PS(item)
     for p in tps.items:
+        if p==O:
+            ret+="O"
         if p==1:
             ret+="I"
         if p==X:
@@ -118,14 +122,22 @@ def TPoPtoString(item):
 
 
 def HtoString(H, symbolic=False):
-    ret=''
+    ret=f'$'
     if isinstance(H, TensorProduct) or isinstance(H, Pauli):### go through Pauli string
         ret+=TPoPtoString(H)
     else:
         for item in H.args:### go through all items of the sum (Pauli strings)
             if isinstance(item, Mul):### remove float
                 if symbolic:
-                    fval,_,item = item.args
+                    for arg in item.args:
+                        if isinstance(arg, Float):
+                            tmp=f'{arg:+.2f}'
+                            #ret+=tmp.rstrip('0')
+                            ret+=" +"
+                        if isinstance(arg, Symbol):
+                            ret+=str(latex(arg))
+                        else:
+                            item=arg
                 else:
                     if len(item.args)>2:
                         fval,tmp,item = item.args
@@ -136,11 +148,11 @@ def HtoString(H, symbolic=False):
                         if math.isclose(fval,0,abs_tol=1e-7):
                             item=None
                             print("depug: close to zero", fval, item)
-                ret+=f'{fval:+.2f}'+" "
+                    ret+=f'{fval:+.2f}'+" "
             if isinstance(item, TensorProduct) or isinstance(item, Pauli):### go through Pauli string
                 ret+=TPoPtoString(item)
             ret+=" "
-    return ret
+    return ret+"$"
 
 
 def num_Cnot_TPoP(item, symbolic=False):
