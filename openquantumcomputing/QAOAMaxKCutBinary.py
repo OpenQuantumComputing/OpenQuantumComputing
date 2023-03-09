@@ -16,9 +16,9 @@ class QAOAMaxKCutOnehot(QAOABase):
             label_string += str(label)
         return label_string
 
-    def cost(self, string, params):
-        G = params.get('G', None)
-        k_cuts = params.get('k_cuts', None)
+    def cost(self, string):
+        G = self.params.get('G', None)
+        k_cuts = self.params.get('k_cuts', None)
         num_V = G.number_of_nodes()
 
         C = 0
@@ -33,13 +33,12 @@ class QAOAMaxKCutOnehot(QAOABase):
                 C += w
         return C
 
-    def createCircuit(self, angles, depth, params={}):
-        G = params.get('G', None)
-        k_cuts = params.get('k_cuts', None)
-        alpha = params.get('alpha', None)
-        version = params.get('version', 2)
-        usebarrier = params.get('usebarrier', False)
-        name= params.get('name', "")
+    def createCircuit(self, angles, depth):
+        G = self.params.get('G', None)
+        k_cuts = self.params.get('k_cuts', None)
+        alpha = self.params.get('alpha', None)
+        version = self.params.get('version', 2)
+        usebarrier = self.params.get('usebarrier', False)
 
         num_V = G.number_of_nodes()
         k_bits = self.kBits_MaxKCut(k_cuts)
@@ -106,7 +105,7 @@ class QAOAMaxKCutOnehot(QAOABase):
 
         q = QuantumRegister(num_V * k_bits + num_aux)
         c = ClassicalRegister(num_V * k_bits)
-        circ = QuantumCircuit(q, c, name=name)
+        circ = QuantumCircuit(q, c)
         circ.h(range(num_V * k_bits))
 
         if usebarrier:
