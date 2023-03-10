@@ -54,6 +54,12 @@ class QAOABase:
 # generic functions
 ################################
 
+    def isFeasible(self, string):
+        """
+        needs to be implemented to run successProbability
+        """
+        return True
+
     def successProbability(self, angles, backend, shots, noisemodel=None):
         """
         success is defined through cost function to be equal to 0
@@ -73,16 +79,14 @@ class QAOABase:
                 tmp=0
                 for string in counts:
                     # qiskit binary strings use little endian encoding, but our cost function expects big endian encoding. Therefore, we reverse the order
-                    cost = self.cost(string[::-1])
-                    if math.isclose(cost, 0,abs_tol=1e-7):
+                    if self.isFeasible(string[::-1]):
                         tmp+=counts[string]
                 s_prob.append(tmp)
         else:
             s_prob=0
             for string in counts_list:
                 # qiskit binary strings use little endian encoding, but our cost function expects big endian encoding. Therefore, we reverse the order
-                cost = self.cost(string[::-1])
-                if math.isclose(cost, 0,abs_tol=1e-7):
+                if self.isFeasible(string[::-1]):
                     s_prob+=counts_list[string]
         return s_prob/shots
 

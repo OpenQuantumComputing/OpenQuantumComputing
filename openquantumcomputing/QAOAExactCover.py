@@ -6,14 +6,35 @@ from openquantumcomputing.QAOABase import QAOABase
 
 class QAOAExactCover(QAOABase):
 
-    def cost(self, string):
+
+    def __exactCover(self, x):
         FR = self.params.get('FR', None)
+        Cexact = np.sum((1 - (FR @ x))**2)
+        return Cexact
+
+    def cost(self, string):
         x = np.array(list(map(int,string)))
-        C = - np.sum((1 - (FR @ x))**2)
-        return C
+        c_e = self.__exactCover(x)
+        CR = self.params.get('CR', None)
+        mu = self.params.get('mu', 1)
+
+        if CR is None:
+            return -c_e
+        else:
+            return - (CR@x + mu*c_e)
+
+    def isFeasible(self, string, feasibleOnly=False):
+        x = np.array(list(map(int,string)))
+        c_e = self.__exactCover(x)
+        if math.isclose(c_e, 0,abs_tol=1e-7):
+            return True
+        else:
+            return False
 
     def createCircuit(self, angles, depth):
         FR = self.params.get('FR', None)
+        CR = self.params.get('CR', None)
+        mu = self.params.get('mu', 1)
         usebarrier = self.params.get('usebarrier', False)
 
         F, R  = np.shape(FR)
@@ -32,13 +53,16 @@ class QAOAExactCover(QAOABase):
             beta = angles[2 * d + 1]
             ### cost Hamiltonian
             for r in range(R):
-                hr = 0.5 * FR[:,r] @ (np.sum(FR,axis = 1) - 2)
+                hr = mu * 0.5 * FR[:,r] @ (np.sum(FR,axis = 1) - 2)
+                if not CR is None:
+                    hr += 0.5 * CR[r]
+
 
                 if not math.isclose(hr, 0,abs_tol=1e-7):
                     circ.rz( gamma * hr, q[r])
 
                 for r_ in range(r+1,R):
-                    Jrr_  = 0.5 * FR[:,r] @ FR[:,r_]
+                    Jrr_  = mu*0.5 * FR[:,r] @ FR[:,r_]
 
                     if not math.isclose(Jrr_, 0,abs_tol=1e-7):
                         circ.cx(q[r], q[r_])
