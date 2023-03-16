@@ -14,6 +14,7 @@ class Statistic:
         self.E=0
         self.S=0
         self.all_values=np.array([])
+        self.all_weights=np.array([])
 
     def add_sample(self, value, weight):
         self.W+=weight
@@ -22,7 +23,8 @@ class Statistic:
         self.S+=weight*(value-tmp_E)*(value-self.E)
         if self.alpha < 1:
             idx = np.searchsorted(self.all_values, value)
-            self.all_values = np.insert(self.all_values, idx, np.ones(int(weight))*value)
+            self.all_values = np.insert(self.all_values, idx, value)
+            self.all_weights = np.insert(self.all_weights, idx, weight)
 
     def get_E(self):
         return self.E
@@ -32,8 +34,8 @@ class Statistic:
 
     def get_CVaR(self):
         if self.alpha < 1:
+            # Q: What is the meaning of the weight?
             alphaK = int(np.round(self.alpha*len(self.all_values)))
-            cvar = np.sum(self.all_values[-alphaK:])/alphaK
-            return cvar
+            return np.sum(self.all_values[-alphaK:])/alphaK
         else:
             return self.get_E()
