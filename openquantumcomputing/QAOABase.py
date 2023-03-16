@@ -23,7 +23,7 @@ class QAOABase:
         self.costval={} # optimal cost values per depth
         self.gamma_grid=None
         self.beta_grid=None
-        self.stat=Statistic()
+        self.stat=Statistic(alpha=self.params.get('alpha', 1))
 
         self.g_it=0
         self.g_values={}
@@ -120,12 +120,12 @@ class QAOABase:
 
         self.num_shots['d'+str(self.current_depth+1)]+=shots_taken
 
-        self.g_values[str(self.g_it)] = -self.stat.get_E()
+        self.g_values[str(self.g_it)] = -self.stat.get_CVaR() 
         self.g_angles[str(self.g_it)] = angles.copy()
 
         #opt_values[str(opt_iterations )] = e[0]
         #opt_angles[str(opt_iterations )] = angles
-        return -self.stat.get_E()
+        return -self.stat.get_CVaR()
 
     def measurementStatistics(self, job):
         """
@@ -145,7 +145,7 @@ class QAOABase:
                     # qiskit binary strings use little endian encoding, but our cost function expects big endian encoding. Therefore, we reverse the order
                     cost = self.cost(string[::-1])
                     self.stat.add_sample(cost, counts[string])
-                expectations.append(self.stat.get_E())
+                expectations.append(self.stat.get_CVaR())
                 variances.append(self.stat.get_Variance())
             return expectations, variances
         else:
@@ -153,7 +153,7 @@ class QAOABase:
                 # qiskit binary strings use little endian encoding, but our cost function expects big endian encoding. Therefore, we reverse the order
                 cost = self.cost(string[::-1])
                 self.stat.add_sample(cost, counts_list[string])
-            return self.stat.get_E(), self.stat.get_Variance()
+            return self.stat.get_CVaR(), self.stat.get_Variance()
 
     def hist(self, angles, backend, shots, noisemodel=None):
         depth=int(len(angles)/2)
