@@ -5,8 +5,8 @@ from openquantumcomputing.QAOABase import QAOABase
 
 class QAOAMaxCut(QAOABase):
 
-    def cost(self, string, params):
-        G = params.get('G', None)
+    def cost(self, string):
+        G = self.params.get('G', None)
         C = 0
         for edge in G.edges():
             i = int(edge[0])
@@ -16,16 +16,15 @@ class QAOAMaxCut(QAOABase):
                 C += w
         return C
 
-    def createCircuit(self, angles, depth, params={}):
-        G = params.get('G', None)
-        usebarrier = params.get('usebarrier', False)
-        name= params.get('name', "")
+    def createCircuit(self, angles, depth):
+        G = self.params.get('G', None)
+        usebarrier = self.params.get('usebarrier', False)
 
         num_V = G.number_of_nodes()
 
         q = QuantumRegister(num_V)
         c = ClassicalRegister(num_V)
-        circ = QuantumCircuit(q, c, name=name)
+        circ = QuantumCircuit(q, c)
 
         ### initial state
         circ.h(range(num_V))

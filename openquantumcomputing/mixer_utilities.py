@@ -1,8 +1,9 @@
 import numpy as np
 from sympy.physics.quantum import TensorProduct
 from sympy.physics.paulialgebra import Pauli, evaluate_pauli_product
-from binsymbols import *
+from openquantumcomputing.binsymbols import binsymbols
 from sympy import *
+from sympy.core.numbers import One as sympyOne
 from openquantumcomputing.utilities import decompose
 import itertools
 import math
@@ -376,7 +377,7 @@ class Circuit_maker:
     def __get_operators_from_tensor_product(self, tensor_product):
         """ split tensor product expr on each tensor product """
         operators=[]
-        while not isinstance(tensor_product, (Pauli, core.numbers.One)):
+        while not isinstance(tensor_product, (Pauli, sympyOne)):
             tensor_product, operator = tensor_product.args
             operators.insert(0, operator)
         operators.insert(0, tensor_product)
