@@ -29,6 +29,8 @@ class QAOABase:
         self.g_values={}
         self.g_angles={}
 
+        self.parameterized = False
+
 ################################
 # functions to be implemented:
 ################################
