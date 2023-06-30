@@ -6,7 +6,6 @@ from openquantumcomputing.QAOABase import QAOABase
 
 class QAOAExactCover(QAOABase):
 
-
     def __exactCover(self, x):
         FR = self.params.get('FR', None)
         Cexact = np.sum((1 - (FR @ x))**2)
