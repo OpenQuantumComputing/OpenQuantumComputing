@@ -1,7 +1,7 @@
 from qiskit import *
 import numpy as np
 from scipy.optimize import minimize
-import math
+import math, time
 
 from openquantumcomputing.Statistic import Statistic
 
@@ -19,11 +19,19 @@ class QAOABase:
         self.current_depth=0 # depth at which local optimization has been done
         self.angles_hist={} # initial and final angles during optimization per depth
         self.num_fval={} # number of function evaluations per depth
+        self.t_per_fval={} # wall time per function evaluation per depth
         self.num_shots={} # number of total shots taken for local optimization per depth
         self.costval={} # optimal cost values per depth
         self.gamma_grid=None
         self.beta_grid=None
         self.stat=Statistic(alpha=self.params.get('alpha', 1))
+
+        # Related to parameterized circuit
+        self.use_parameterized_circuit = params.get("parameterize", False)
+        self.parameterized_circuit = None
+        self.current_circuit_depth = 0
+        self.gamma_params = None
+        self.beta_params = None
 
         self.g_it=0
         self.g_values={}
@@ -91,6 +99,36 @@ class QAOABase:
                 if self.isFeasible(string[::-1]):
                     s_prob+=counts_list[string]
         return s_prob/shots
+    
+    def getParametersToBind(self, angles, depth, asList=False):
+        """
+        Utility function to structure the parameterized parameter values 
+        so that they can be applied/bound to the parameterized circuit.
+
+        :param angles: gamma and beta values
+        :param depth: circuit depth
+        :asList: Boolean that specify if the values in the dict should be a list or not
+        :return: A dict containing parameters as keys and parameter values as values
+        """
+        assert(len(angles) == 2*depth) 
+        
+        params = {}
+        for d in range(depth):
+            if asList:
+                params[self.gamma_params[d]] = [angles[2*d + 0]]
+                params[self.beta_params[d]]  = [angles[2*d + 1]]
+            else:
+                params[self.gamma_params[d]] = angles[2*d + 0]
+                params[self.beta_params[d]]  = angles[2*d + 1]
+        return params
+    
+    def _applyParameters(self, angles, depth):
+            """
+            Wrapper for binding the given parameters to a parameterized circuit.
+            Best used when evaluating a single circuit, as is the case in the optimization loop.
+            """
+            params = self.getParametersToBind(angles, depth)
+            return self.parameterized_circuit.bind_parameters(params)   
 
     def loss(self, angles, backend, depth, shots, precision, noisemodel):
         """
@@ -98,15 +136,23 @@ class QAOABase:
         :return: an instance of the qiskti class QuantumCircuit
         """
         self.g_it+=1
-        circuit = self.createCircuit(angles, depth)
 
+        circuit = None
         n_target=shots
         self.stat.reset()
         shots_taken=0
 
         for i in range(3):
             if backend.configuration().local:
-                job = execute(circuit, backend=backend, noise_model=noisemodel, shots=shots)
+                if self.use_parameterized_circuit:
+                    params = self.getParametersToBind(angles, depth, asList=True)
+                    job = execute(self.parameterized_circuit, 
+                                  backend=backend, noise_model=noisemodel, shots=shots,
+                                  parameter_binds=[params], optimization_level=0)
+                else:
+                    if circuit is None:
+                        circuit = self.createCircuit(angles, depth)
+                    job = execute(circuit, backend=backend, noise_model=noisemodel, shots=shots)
             else:
                 name=""
                 job = start_or_retrieve_job(name+"_"+str(opt_iterations), backend, circuit, options={'shots' : shots})
@@ -208,14 +254,44 @@ class QAOABase:
         self.beta_grid = np.linspace(tmp[0],tmp[1],tmp[2])
 
         if backend.configuration().local:
-            circuits=[]
-            for beta in self.beta_grid:
-                for gamma in self.gamma_grid:
-                    circuits.append(self.createCircuit(np.array((gamma,beta)), depth))
-            job = execute(circuits, backend, shots=shots)
-            e, v = self.measurementStatistics(job)
-            self.E = -np.array(e).reshape(angles["beta"][2],angles["gamma"][2])
-            self.Var = np.array(v).reshape(angles["beta"][2],angles["gamma"][2])
+
+            if self.use_parameterized_circuit:
+                self.createCircuit(np.array((self.gamma_grid[0],self.beta_grid[0])), depth)
+                #parameters = []
+                gamma = [None]*angles["beta"][2]*angles["gamma"][2]
+                beta  = [None]*angles["beta"][2]*angles["gamma"][2]
+            
+                counter = 0
+                for b in range(angles["beta"][2]):
+                    for g in range(angles["gamma"][2]):
+                        gamma[counter] = self.gamma_grid[g]
+                        beta[counter]  = self.beta_grid[b]
+                        counter += 1
+                
+                parameters = [{self.gamma_params[0]: gamma,
+                                self.beta_params[0]: beta}]
+                        
+                print("Executing sample_cost_landscape")
+                print("parameters: ", len(parameters), len(parameters[0][self.gamma_params[0]]))
+                if (len(parameters[0][self.gamma_params[0]]) < 15):
+                    print(parameters)
+                job = execute(self.parameterized_circuit, backend, shots=shots, 
+                                parameter_binds=parameters, optimization_level=0)
+                print("Done execute")
+                e, v = self.measurementStatistics(job)
+                print("Done measurement")
+                self.E = -np.array(e).reshape(angles["beta"][2],angles["gamma"][2])
+                self.Var = np.array(v).reshape(angles["beta"][2],angles["gamma"][2])
+
+            else: # not parameterized circuit
+                circuits=[]
+                for beta in self.beta_grid:
+                    for gamma in self.gamma_grid:
+                        circuits.append(self.createCircuit(np.array((gamma,beta)), depth))
+                job = execute(circuits, backend, shots=shots)
+                e, v = self.measurementStatistics(job)
+                self.E = -np.array(e).reshape(angles["beta"][2],angles["gamma"][2])
+                self.Var = np.array(v).reshape(angles["beta"][2],angles["gamma"][2])
         else:
             self.E = np.zeros((angles["beta"][2],angles["gamma"][2]))
             self.Var = np.zeros((angles["beta"][2],angles["gamma"][2]))
@@ -262,6 +338,7 @@ class QAOABase:
         :param precision: precision to reach for expectation value based on error=variance/sqrt(shots)
         """
 
+        t_start = time.time()
         if self.current_depth == 0:
             if self.E is None:
                 self.sample_cost_landscape(backend, shots, noisemodel=noisemodel, angles={"gamma": [0,2*np.pi,20], "beta": [0,2*np.pi,20]})
@@ -282,10 +359,15 @@ class QAOABase:
         self.g_values={}
         self.g_angles={}
 
+        if self.use_parameterized_circuit:
+            # Make sure that we have created a parameterized circuit before calling local_opt
+            self.createCircuit(angles0, int(len(angles0)/2))
+
         res = self.local_opt(angles0, backend, shots, precision, noisemodel=noisemodel, method=method)
         if not res.success:
             raise Warning("Local optimization was not successful.", res)
         self.num_fval['d'+str(self.current_depth+1)]=res.nfev
+        self.t_per_fval['d'+str(self.current_depth+1)] = (time.time() - t_start) / res.nfev
         print("cost(depth=",self.current_depth+1,")=", res.fun)
 
         ind = min(self.g_values, key=self.g_values.get)
