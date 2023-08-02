@@ -282,7 +282,7 @@ class QAOAConstrained_design_mixer(QAOABase):
             m.compute_commuting_pairs()
             m.compute_family_of_graphs()
             m.get_best_mixer_commuting_graphs(reduced = self.reduced)
-            self.mixer_circuit, self.best_mixer_terms = m.compute_parametrized_circuit(self.reduced)
+            self.mixer_circuit, self.best_mixer_terms, self.logical_X_operators= m.compute_parametrized_circuit(self.reduced)
         elif not self.best_mixer_terms and not self.use_parameterized_circuit:
             print("Its now computing the best mixer, not parametrized")
             m = Mixer(self.B, sort = True)
