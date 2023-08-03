@@ -73,21 +73,59 @@ class QAOAConstrained_design_mixer(QAOABase):
         #print("Return value: ",  - (x.T@self.QUBO_Q@x + self.QUBO_c.T@x + self.QUBO_b))
         return - (x.T@self.QUBO_Q@x + self.QUBO_c.T@x + self.QUBO_b)
 
-
-    def createCircuit(self, angles, depth):
+    def cost_circuit_parameterized(self,d, q):
         if self.lower_triangular_Q:
-            if self.use_parameterized_circuit:
-                if self.current_circuit_depth != depth:
-                    self._createParameterizedCircuitTril( depth)
-                return self._applyParameters(angles, depth)
-            return self._createCircuitTril(angles, depth)
+            self._createParameterizedCostCircuitTril(d, q)
         else:
-            #Full Q-matrix
-            if self.use_parameterized_circuit:
-                raise NotImplementedError
-            return self._createCircuitFull(angles, depth)
-      
-      
+            #Not lower triangular Q matrix
+            raise NotImplementedError
+        
+    
+    def _createParameterizedCostCircuitTril(self, d, q):
+        """
+        Creates a parameterized circuit of the triangularized QUBO problem.
+        """
+
+        self.gamma_params[d] = Parameter('gamma_'+ str(d))
+        usebarrier = self.params.get('usebarrier', False)
+        if usebarrier:
+            self.parameterized_circuit.barrier()
+
+        ### cost Hamiltonian
+        for i in range(self.N_assets):
+            w_i = 0.5 * (self.QUBO_c[i] + np.sum(self.QUBO_Q[:, i]))
+            
+
+            if not math.isclose(w_i, 0,abs_tol=1e-7):
+                self.parameterized_circuit.rz( self.gamma_params[d] * w_i, q[i])
+
+            for j in range(i+1, self.N_assets):
+                w_ij = 0.25*self.QUBO_Q[j][i]
+
+                if not math.isclose(w_ij, 0,abs_tol=1e-7):
+                    self.parameterized_circuit.cx(q[i], q[j])
+                    self.parameterized_circuit.rz(self.gamma_params[d] * w_ij, q[j])
+                    self.parameterized_circuit.cx(q[i], q[j])
+            if usebarrier:
+                self.parameterized_circuit.barrier()
+
+
+
+    def mixer_circuit_parameterized(self, d, q):    
+        if not self.best_mixer_terms:
+            self.computeBestMixer()
+
+        self.beta_params[d]  = Parameter('beta_' + str(d))
+        c = self.mixer_circuit.assign_parameters({self.mixer_circuit.parameters[0]: self.beta_params[d]}, inplace = False) 
+        self.parameterized_circuit.compose(c, inplace = True)
+
+        usebarrier = self.params.get('usebarrier', False)
+        if usebarrier:
+            self.parameterized_circuit.barrier()
+
+
+    
+
 
     def _createCircuitTril(self, angles, depth):
 
@@ -135,142 +173,9 @@ class QAOAConstrained_design_mixer(QAOABase):
         return circ
     
 
-    def _createParameterizedCircuitTril(self, depth):
-        """
-        Creates a parameterized circuit of the triangularized QUBO problem.
-        """
-        self.gamma_params = [None]*depth
-        self.beta_params = [None]*depth
-        for d in range(depth):
-            self.gamma_params[d] = Parameter('gamma_'+ str(d))
-            self.beta_params[d]  = Parameter('beta_' + str(d))
-
-        usebarrier = self.params.get('usebarrier', False)
-
-        q = QuantumRegister(self.N_assets)
-        c = ClassicalRegister(self.N_assets)
-        self.parameterized_circuit = QuantumCircuit(q, c)
-
-        ### initial state
-        self.setToInitialState(self.parameterized_circuit, q)
-
-        self.computeBestMixer()
-        #self.num_created_circuits[depth-1] += 1
-        if usebarrier:
-            self.parameterized_circuit.barrier()
-        for d in range(depth):
-            ### cost Hamiltonian
-            for i in range(self.N_assets):
-                w_i = 0.5 * (self.QUBO_c[i] + np.sum(self.QUBO_Q[:, i]))
-                
-
-                if not math.isclose(w_i, 0,abs_tol=1e-7):
-                    self.parameterized_circuit.rz( self.gamma_params[d] * w_i, q[i])
-
-                for j in range(i+1, self.N_assets):
-                    w_ij = 0.25*self.QUBO_Q[j][i]
-
-                    if not math.isclose(w_ij, 0,abs_tol=1e-7):
-                        self.parameterized_circuit.cx(q[i], q[j])
-                        self.parameterized_circuit.rz(self.gamma_params[d] * w_ij, q[j])
-                        self.parameterized_circuit.cx(q[i], q[j])
-                if usebarrier:
-                    self.parameterized_circuit.barrier()
-            ### mixer Hamiltonian
-
-            self.parameterized_circuit = self.applyBestMixer(self.parameterized_circuit, self.beta_params[d], q)
-            if usebarrier:
-                self.parameterized_circuit.barrier()
-        self.parameterized_circuit.measure(q, c)
-        self.current_circuit_depth = depth
 
 
-
-
-    def _createCircuitFull(self, angles, depth):
-        raise NotImplementedError 
     
-        usebarrier = self.params.get('usebarrier', False)
-
-        q = QuantumRegister(self.N_assets)
-        c = ClassicalRegister(self.N_assets)
-        circ = QuantumCircuit(q, c)
-
-        ### initial state
-        circ.h(range(self.N_assets))
-
-        if usebarrier:
-            circ.barrier()
-        for d in range(depth):
-            gamma = angles[2 * d]
-            beta = angles[2 * d + 1]
-            ### cost Hamiltonian
-            for i in range(self.N_assets):
-                w_i = 0.5 * (self.QUBO_c[i] + np.sum(self.QUBO_Q[:, i]))
-                
-
-                if not math.isclose(w_i, 0,abs_tol=1e-7):
-                    circ.rz( gamma * w_i, q[i])
-
-                for j in range(i+1, self.N_assets):
-                    w_ij = 0.25*self.QUBO_Q[j][i]
-
-                    if not math.isclose(w_ij, 0,abs_tol=1e-7):
-                        circ.cx(q[i], q[j])
-                        circ.rz(gamma * w_ij, q[j])
-                        circ.cx(q[i], q[j])
-                if usebarrier:
-                    circ.barrier()
-            ### mixer Hamiltonian
-            circ.rx(-2 * beta, range(self.N_assets))
-            if usebarrier:
-                circ.barrier()
-        circ.measure(q, c)
-        return circ
-    
-    def applyBestMixer(self, circuit, beta, q):    
-        if not self.best_mixer_terms:
-            #self.computeBestMixer(beta)
-            #should not go in here
-            raise NotImplementedError
-
-        if self.use_parameterized_circuit:
-            # beta is a parameter
-            c = self.mixer_circuit.assign_parameters({self.mixer_circuit.parameters[0]: beta}, inplace = False)
-            c_return = circuit.compose(c, inplace = False)
-            return c_return
-        else:
-            #beta is a float
-
-            for term in self.best_mixer_terms:
-                circuit.append(PauliEvolutionGate(qi.Pauli(term.P), time = np.real(term.scalar)*beta), q)
-            return circuit
-
-
-
-
-        """
-        for term in self.best_mixer_terms:
-            circuit.barrier()
-            indicies_of_X = [i for i in range(len(term)) if term[i] == 'X']
-            
-            if (len(indicies_of_X) == 1):
-                #If pauli string only contains one X operator, an X-rotation is applied to that qubit
-                circuit.rx(-2*beta, indicies_of_X[0])
-            else:
-                #If pauli string contains more than one X operator we apply the "CNOT cascade" for the relevant qubits (see paper)
-                circuit.h(indicies_of_X) #apply hadamard gate to all relevant qubits
-                
-                for i in range(len(indicies_of_X)-1):
-                    circuit.cx(indicies_of_X[i], indicies_of_X[i+1])
-            
-                circuit.rz(2*beta, qubit_register[indicies_of_X[-1]])
-
-                for i in reversed(range(1, len(indicies_of_X))):
-                    circuit.cx(indicies_of_X[i-1], indicies_of_X[i])
-                circuit.h(indicies_of_X)
-
-        """
 
     def computeBestMixer(self):
         if not self.B:
@@ -293,7 +198,7 @@ class QAOAConstrained_design_mixer(QAOABase):
         else:
             pass
 
-        
+
 
 
 
