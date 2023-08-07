@@ -8,12 +8,12 @@ import itertools
 import sys
     # caution: path[0] is reserved for script path (or '' in REPL)
 sys.path.insert(1, '/Users/olaib/QuantumComputing/OpenQuantumComputing')
-from openquantumcomputing.QAOAConstrained_design_mixer import QAOAConstrained_design_mixer
+from openquantumcomputing.QAOAKhot import QAOAKhot
 
-class QAOAPortfolioOptimization_mixer(QAOAConstrained_design_mixer):
+class QAOAPortfolioOptimization_mixer(QAOAKhot):
 
     def __init__(self, params=None):
-        super(QAOAPortfolioOptimization_mixer, self).__init__(params=params)
+        super().__init__(params=params)
 
         self.__checkParams()
         self.risk = params.get("risk")
@@ -21,7 +21,8 @@ class QAOAPortfolioOptimization_mixer(QAOAConstrained_design_mixer):
         self.cov_matrix = params.get("cov_matrix")
         self.exp_return = params.get("exp_return")
         self.penalty = params.get("penalty", 0.0)
-        self.N_assets = len(self.exp_return)
+        self.N_qubits = len(self.exp_return)
+
         
 
 
@@ -61,29 +62,7 @@ class QAOAPortfolioOptimization_mixer(QAOAConstrained_design_mixer):
         else:
             return False
         
-    def computeFeasibleSubspace(self):
-        print("Its now computing the feasible subspace")
-        for combination in itertools.combinations(range(self.N_assets), self.budget):
-            current_state = ['0']*self.N_assets
-            for index in combination:
-                current_state[index] = '1'
-            self.B.append(''.join(current_state))
 
 
-"""
-    def cost_nonQUBO(self, string, penalize=True):
-        
-        risk       = self.params.get("risk")
-        budget     = self.params.get("budget")
-        cov_matrix = self.params.get("cov_matrix")
-        exp_return = self.params.get("exp_return")
-        penalty    = self.params.get("penalty", 0.0)
 
-        x = np.array(list(map(int,string)))        
-        cost = risk* (x.T@cov_matrix@x) - exp_return.T@x
-        if penalize:
-            cost += penalty * (x.sum() - budget)**2
-
-        return -cost
-"""
 
