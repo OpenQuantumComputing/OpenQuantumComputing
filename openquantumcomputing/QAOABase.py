@@ -25,9 +25,9 @@ class QAOABase:
         self.gamma_grid=None
         self.beta_grid=None
         self.stat=Statistic(alpha=self.params.get('alpha', 1))
+        self.N_qubits = None #NEEDS TO BE INITIALIZED
 
         # Related to parameterized circuit
-        self.use_parameterized_circuit = params.get("parameterize", False)
         self.parameterized_circuit = None
         self.current_circuit_depth = 0
         self.gamma_params = None
@@ -51,50 +51,37 @@ class QAOABase:
         :return: a scalar value
         """
 
-    def cost_circuit(self, circuit, angles, depth):
-        """
-        Implements the function that returns the cost hamiltonian part of the circuit
-        :param circuit: circuit to append cost circuit to
-        :param angles: values of parameters
-        :param depth: depth
-        :return: quantum circuit corresponding to the cost hamiltonian
-        """
-        raise NotImplementedError
 
-    def cost_circuit_parameterized(self, depth):
-        """
-        Implements the function that returns the cost hamiltonian part of the PARAMETERIZED circuit
 
-        :param angles: (
-        :param depth: 
-        :return: PARAMETERIZED quantum circuit corresponding to the cost hamiltonian
+    def create_cost_circuit(self, depth, q):
+        """
+        Implements the function that adds the (parameterized) cost hamiltonian part, to the member variable
+        self.parameterized_circuit
+
+        :param depth: Depth index (look in createParameterizedCircuit)
+        :param q: Quantum register that the circuit will operate on
+        
         """
         raise NotImplementedError
     
 
-    def mixer_circuit(self, circuit, angles, depth):
+    def create_mixer_circuit(self, depth, q):
         """
-        Implements the function that returns the mixer part of the circuit
+        Implements the function that adds the (parameterized) mixer part of the circuit, to the member variable
+        self.parameterized_circuit
 
-        :param angles: (
-        :param depth: 
-        :return: quantum circuit corresponding to the mixer
+        :param depth: Depth index (look in createParameterizedCircuit)
+        :param q: Quantum register that the circuit will operatoe on
+
         """
         raise NotImplementedError
 
-    def mixer_circuit_parameterized(self, depth):
-        """
-        Implements the function that returns the mixer part of the PARAMETERIZED circuit
 
-        :param angles: 
-        :param depth: 
-        :return: PARAMETERIZED quantum circuit corresponding to the mixer
-        """
-        raise NotImplementedError
     
-    def setToInitialState(self, circuit, q):
+    def setToInitialState(self, q):
         """
-        Implements the function that sets the circuit in the initial state
+        Implements the function that sets the member variable self.parameterized_circuit
+        in the initial state
         :param q: The qubit register which is initialized
 
         """
@@ -108,58 +95,32 @@ class QAOABase:
 
     def createParameterizedCircuit(self, depth):
         """
-        Implements a function to create a parameterized circuit, a
+        Implements a function to create a parameterized circuit.
         Initializes the member variable parameterized_circuit
 
         :param depth: depth of parameterized circuit
-
         """
-        q = QuantumRegister(self.N_assets)
-        c = ClassicalRegister(self.N_assets)    
-        self.parameterized_circuit = QuantumCircuit(q, c)
-        self.gamma_params = [None]*depth
-        self.beta_params = [None]*depth
-
-        ### Initial state
-        self.setToInitialState(self.parameterized_circuit, q)    
-
-        for d in range(depth):               
-            self.cost_circuit_parameterized(d, q) #abstract function, adds qiskit parameters to self.parameterized_circuit self.gamma_params
-            self.mixer_circuit_parameterized(d, q) #abstract function, adds qiskit parameters to self.parameterized_circuit self.beta_params
-            
-        self.parameterized_circuit.measure(q, c)
-        self.current_circuit_depth = depth
-
-
-
-
-
-    def getBoundCircuit(self, angles, depth):
-        """
-        implements a function that returns a bound circuit (or a non parameterized circuit)
-
-        :return: an instance of the qiskit class QuantumCircuit
-        """
-        if self.use_parameterized_circuit:
-            if self.current_circuit_depth != depth:
-                self.createParameterizedCircuit(depth)
-            return self._applyParameters(angles, depth)         #returns bound parameterized circuit
-        else:
-            raise NotImplementedError
-            q = QuantumRegister(self.N_assets)
-            c = ClassicalRegister(self.N_assets)    
-            circuit = QuantumCircuit(q, c)
+        if self.current_circuit_depth !=depth:
+            q = QuantumRegister(self.N_qubits)
+            c = ClassicalRegister(self.N_qubits)    
+            self.parameterized_circuit = QuantumCircuit(q, c)
+            self.gamma_params = [None]*depth
+            self.beta_params = [None]*depth
 
             ### Initial state
-            self.setToInitialState(circuit, q)
-            for d in range(depth):
-                self.cost_circuit(circuit, angles, d)
-                self.mixer_circuit(circuit, angles, d)
+            self.setToInitialState(q)    
 
-            circuit.measure(q, c)
+            for d in range(depth):               
+                self.create_cost_circuit(d, q) #abstract function, adds qiskit parameters to self.parameterized_circuit and self.gamma_params
+                self.create_mixer_circuit(d, q) #abstract function, adds qiskit parameters to self.parameterized_circuit and self.beta_params
+                
+            self.parameterized_circuit.measure(q, c)
+            self.current_circuit_depth = depth
+        else:
+            #Dont need to do anything if current circuit is the correct depth
+            pass
 
-            return circuit                                     #returns non parameteried circuit
-            
+
 
     def isFeasible(self, string):
         """
@@ -172,11 +133,11 @@ class QAOABase:
         success is defined through cost function to be equal to 0
         """
         depth=int(len(angles)/2)
-        circ=self.getBoundCircuit(angles, depth)                #This only works for non-parameterized circuits now
+        params = self.getParametersToBind(angles, depth,asList=True)            
         if backend.configuration().local:
-            job = execute(circ, backend, shots=shots)
+            job = execute(self.parameterized_circuit, backend, shots=shots, parameter_binds=[params])
         else:
-            job = start_or_retrieve_job("sprob", backend, circ, options={'shots' : shots})
+            job = start_or_retrieve_job("sprob", backend, self.parameterized_circuit, options={'shots' : shots}) #Now sending in a parameterized circuit here
 
         jres=job.result()
         counts_list=jres.get_counts()
@@ -230,7 +191,7 @@ class QAOABase:
     def loss(self, angles, backend, depth, shots, precision, noisemodel):
         """
         loss function
-        :return: an instance of the qiskti class QuantumCircuit
+        :return: an instance of the qiskit class QuantumCircuit
         """
         self.g_it+=1
 
@@ -241,15 +202,11 @@ class QAOABase:
 
         for i in range(3):
             if backend.configuration().local:
-                if self.use_parameterized_circuit:
-                    params = self.getParametersToBind(angles, depth, asList=True)
-                    job = execute(self.parameterized_circuit, 
+                
+                params = self.getParametersToBind(angles, depth, asList=True)
+                job = execute(self.parameterized_circuit, 
                                   backend=backend, noise_model=noisemodel, shots=shots,
                                   parameter_binds=[params], optimization_level=0)
-                else:
-                    if circuit is None:
-                        circuit = self.getBoundCircuit(angles, depth)
-                    job = execute(circuit, backend=backend, noise_model=noisemodel, shots=shots)
             else:
                 name=""
                 job = start_or_retrieve_job(name+"_"+str(opt_iterations), backend, circuit, options={'shots' : shots})
@@ -303,9 +260,9 @@ class QAOABase:
     def hist(self, angles, backend, shots, noisemodel=None):
         depth=int(len(angles)/2)
         
-        circ=self.getBoundCircuit(angles, depth)
+        params = self.getParametersToBind(angles, depth, asList=True)
         if backend.configuration().local:
-            job = execute(circ, backend, shots=shots)
+            job = execute(self.parameterized_circuit, backend, shots=shots, parameter_binds=[params])
         else:
             job = start_or_retrieve_job("hist", backend, circ, options={'shots' : shots})
         return job.result().get_counts()
@@ -353,43 +310,34 @@ class QAOABase:
 
         if backend.configuration().local:
 
-            if self.use_parameterized_circuit:
-                self.createParameterizedCircuit(depth)
-                #parameters = []
-                gamma = [None]*angles["beta"][2]*angles["gamma"][2]
-                beta  = [None]*angles["beta"][2]*angles["gamma"][2]
-            
-                counter = 0
-                for b in range(angles["beta"][2]):
-                    for g in range(angles["gamma"][2]):
-                        gamma[counter] = self.gamma_grid[g]
-                        beta[counter]  = self.beta_grid[b]
-                        counter += 1
-                
-                parameters = [{self.gamma_params[0]: gamma,
-                                self.beta_params[0]: beta}]
-                        
-                print("Executing sample_cost_landscape")
-                print("parameters: ", len(parameters), len(parameters[0][self.gamma_params[0]]))
-                if (len(parameters[0][self.gamma_params[0]]) < 15):
-                    print(parameters)
-                job = execute(self.parameterized_circuit, backend, shots=shots, 
-                                parameter_binds=parameters, optimization_level=0)
-                print("Done execute")
-                e, v = self.measurementStatistics(job)
-                print("Done measurement")
-                self.E = -np.array(e).reshape(angles["beta"][2],angles["gamma"][2])
-                self.Var = np.array(v).reshape(angles["beta"][2],angles["gamma"][2])
 
-            else: # not parameterized circuit
-                circuits=[]
-                for beta in self.beta_grid:
-                    for gamma in self.gamma_grid:
-                        circuits.append(self.getBoundCircuit(np.array((gamma,beta)), depth))
-                job = execute(circuits, backend, shots=shots)
-                e, v = self.measurementStatistics(job)
-                self.E = -np.array(e).reshape(angles["beta"][2],angles["gamma"][2])
-                self.Var = np.array(v).reshape(angles["beta"][2],angles["gamma"][2])
+            self.createParameterizedCircuit(depth)
+            #parameters = []
+            gamma = [None]*angles["beta"][2]*angles["gamma"][2]
+            beta  = [None]*angles["beta"][2]*angles["gamma"][2]
+        
+            counter = 0
+            for b in range(angles["beta"][2]):
+                for g in range(angles["gamma"][2]):
+                    gamma[counter] = self.gamma_grid[g]
+                    beta[counter]  = self.beta_grid[b]
+                    counter += 1
+            
+            parameters = {self.gamma_params[0]: gamma,
+                            self.beta_params[0]: beta}
+                    
+            print("Executing sample_cost_landscape")
+            print("parameters: ", len(parameters), len(parameters[self.gamma_params[0]]))
+            if (len(parameters[self.gamma_params[0]]) < 15):
+                print(parameters)
+            job = execute(self.parameterized_circuit, backend, shots=shots, 
+                            parameter_binds=[parameters], optimization_level=0)
+            print("Done execute")
+            e, v = self.measurementStatistics(job)
+            print("Done measurement")
+            self.E = -np.array(e).reshape(angles["beta"][2],angles["gamma"][2])
+            self.Var = np.array(v).reshape(angles["beta"][2],angles["gamma"][2])
+
         else:
             self.E = np.zeros((angles["beta"][2],angles["gamma"][2]))
             self.Var = np.zeros((angles["beta"][2],angles["gamma"][2]))
@@ -399,9 +347,8 @@ class QAOABase:
                 g=-1
                 for gamma in self.gamma_grid:
                     g+=1
-                    circuit = self.getBoundCircuit(np.array((gamma,beta)), depth)
                     name=""
-                    job = start_or_retrieve_job(name+"_"+str(b)+"_"+str(g), backend, circuit, options={'shots' : shots})
+                    job = start_or_retrieve_job(name+"_"+str(b)+"_"+str(g), backend, self.parameterized_circuit, options={'shots' : shots}) #Now takes in parameterized_circuit
                     e,v = self.measurementStatistics(job)
                     self.E[b,g] = -e[0]
                     self.Var[b,g] = -v[0]
@@ -457,9 +404,9 @@ class QAOABase:
         self.g_values={}
         self.g_angles={}
 
-        if self.use_parameterized_circuit:
-            # Make sure that we have created a parameterized circuit before calling local_opt
-            self.createParameterizedCircuit(int(len(angles0)/2))
+
+            
+        self.createParameterizedCircuit(int(len(angles0)/2))            # Make sure that we have created a parameterized circuit before calling local_opt
 
         res = self.local_opt(angles0, backend, shots, precision, noisemodel=noisemodel, method=method)
         if not res.success:
