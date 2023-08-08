@@ -11,8 +11,7 @@ from qiskit.quantum_info import Statevector
 #run: pip install openquantumcomputing
 import sys
     # caution: path[0] is reserved for script path (or '' in REPL)
-sys.path.insert(1, '/Users/olaib/QuantumComputing/OpenQuantumComputing')
-sys.path.append('/Users/olaib/QuantumComputing/OpenQuantumComputing_private')
+
 from openquantumcomputing2.Mixer import *
 from openquantumcomputing.QAOAQUBO import QAOAQUBO
 
@@ -40,7 +39,7 @@ class QAOAConstrainedQUBO(QAOAQUBO):
 
 
     def create_mixer_circuit(self, d, q):  
-        
+
         if not self.best_mixer_terms:
             self.computeBestMixer()
 
@@ -61,7 +60,6 @@ class QAOAConstrainedQUBO(QAOAQUBO):
             self.computeFeasibleSubspace()
         if not self.best_mixer_terms:
                 
-            print("Its now computing the best mixer, parametrized by Havard")
             m = Mixer(self.B, sort = True)
             m.compute_commuting_pairs()
             m.compute_family_of_graphs()
