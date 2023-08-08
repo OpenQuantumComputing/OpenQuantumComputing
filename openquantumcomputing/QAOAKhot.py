@@ -9,8 +9,7 @@ import itertools
 
 import sys
     # caution: path[0] is reserved for script path (or '' in REPL)
-sys.path.insert(1, '/Users/olaib/QuantumComputing/OpenQuantumComputing')
-sys.path.append('/Users/olaib/QuantumComputing/OpenQuantumComputing_private')
+
 from openquantumcomputing.QAOAConstrainedQUBO import QAOAConstrainedQUBO
 from openquantumcomputing2.PauliString import PauliString
 
@@ -48,8 +47,10 @@ class QAOAKhot(QAOAConstrainedQUBO):
 
             Beta = Parameter('Beta')
             scale = 0.5 #Since every logical X has two stabilizers 
-            for i in range(self.N_qubits):
-                self.mixer_circuit.XXPlusYYGate() #How to do this???
+            for i in range(self.N_qubits-1):
+                #Hard coded XY mixer
+                current_gate = XXPlusYYGate(scale*Beta)
+                self.mixer_circuit.append(current_gate, [i, i+1])
 
 
                 
@@ -67,12 +68,11 @@ class QAOAKhot(QAOAConstrainedQUBO):
 
     def __XYMixerTerms(self):
     
-        #is k = 1 a special case? No, shouldt be.
         logical_X_operators = [None]*(self.N_qubits-1)
         mixer_terms = {}
         scale = 0.5                         #1/size, size of stabilizer space
-        for i in range(self.N_qubits -1):
-            logical_X_operator = list("IIII")
+        for i in range(self.N_qubits -2):
+            logical_X_operator = ["I"]*(self.N_qubits-1)
             logical_X_operator[i] = "X"
             logical_X_operator[i+1] = "X"
             logical_X_operator = "".join(logical_X_operator)
@@ -80,7 +80,7 @@ class QAOAKhot(QAOAConstrainedQUBO):
 
             mixer_terms[logical_X_operator] = [PauliString(scale, logical_X_operator)]
 
-            YY_operator = list("IIII")
+            YY_operator = ["I"]*(self.N_qubits-1)
             YY_operator[i] = "Y"
             YY_operator[i+1] = "Y"
             YY_operator = "".join(YY_operator)

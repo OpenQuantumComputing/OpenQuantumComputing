@@ -7,7 +7,7 @@ import itertools
 
 import sys
     # caution: path[0] is reserved for script path (or '' in REPL)
-sys.path.insert(1, '/Users/olaib/QuantumComputing/OpenQuantumComputing')
+
 from openquantumcomputing.QAOAKhot import QAOAKhot
 
 class QAOAPortfolioOptimization_mixer(QAOAKhot):

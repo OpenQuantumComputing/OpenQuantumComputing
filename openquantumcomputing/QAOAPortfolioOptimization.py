@@ -15,13 +15,13 @@ class QAOAPortfolioOptimization(QAOAQUBO):
         self.cov_matrix = params.get("cov_matrix")
         self.exp_return = params.get("exp_return")
         self.penalty = params.get("penalty", 0.0)
-        self.N_assets = len(self.exp_return)
+        self.N_qubits = len(self.exp_return)
 
         # Reformulated as a QUBO
         # min x^T Q x + c^T x + b
         # Writing Q as lower triangular matrix since it otherwise is symmetric
         Q = self.risk * np.tril(self.cov_matrix + np.tril(self.cov_matrix, k=-1)) \
-                        + self.penalty*(np.eye(self.N_assets) + 2* np.tril(np.ones((self.N_assets, self.N_assets)), k=-1))
+                        + self.penalty*(np.eye(self.N_qubits) + 2* np.tril(np.ones((self.N_qubits, self.N_qubits)), k=-1))
         c = - self.exp_return - (2*self.penalty*self.budget*np.ones_like(self.exp_return))
         b = self.penalty*self.budget*self.budget
 
