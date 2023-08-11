@@ -7,7 +7,7 @@ from openquantumcomputing.QAOAQUBO import QAOAQUBO
 class QAOAPortfolioOptimization(QAOAQUBO):
 
     def __init__(self, params=None):
-        super(QAOAPortfolioOptimization, self).__init__(params=params)
+        super().__init__(params=params)
 
         self.__checkParams()
         self.risk = params.get("risk")

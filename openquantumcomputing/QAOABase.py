@@ -25,7 +25,7 @@ class QAOABase:
         self.gamma_grid=None
         self.beta_grid=None
         self.stat=Statistic(alpha=self.params.get('alpha', 1))
-        self.N_qubits = None #NEEDS TO BE INITIALIZED
+        self.N_qubits = None #Needs to be initialized in a child class
 
         # Related to parameterized circuit
         self.parameterized_circuit = None
@@ -37,7 +37,6 @@ class QAOABase:
         self.g_values={}
         self.g_angles={}
 
-        self.parameterized = False
 
 ################################
 # functions to be implemented:
@@ -84,8 +83,12 @@ class QAOABase:
         in the initial state
         :param q: The qubit register which is initialized
 
+        Is overwritten for child classes where initial state should be superposition
+        over feasible states
+
         """
-        raise NotImplementedError
+        self.parameterized_circuit.h(range(self.N_qubits))
+
 
 
 ################################
@@ -406,7 +409,7 @@ class QAOABase:
 
 
             
-        self.createParameterizedCircuit(int(len(angles0)/2))            # Make sure that we have created a parameterized circuit before calling local_opt
+        self.createParameterizedCircuit(int(len(angles0)/2))            #Create parameterized circuit at new depth
 
         res = self.local_opt(angles0, backend, shots, precision, noisemodel=noisemodel, method=method)
         if not res.success:
