@@ -113,8 +113,4 @@ class QAOAQUBO(QAOABase):
         
 
 
-    def setToInitialState(self, quantum_register):
-        #Initial state is equal superposition over every computational basis state
-        self.parameterized_circuit.h(range(self.N_qubits))
-
    
