@@ -36,7 +36,7 @@ class QAOAMaxCut(QAOABase):
             self.parameterized_circuit.barrier()
 
         ### cost Hamiltonian
-        for edge in G.edges():
+        for edge in self.G.edges():
             i = int(edge[0])
             j = int(edge[1])
             w = self.G[edge[0]][edge[1]]['weight']

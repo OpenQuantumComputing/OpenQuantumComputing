@@ -136,6 +136,7 @@ class QAOABase:
         success is defined through cost function to be equal to 0
         """
         depth=int(len(angles)/2)
+        self.createParameterizedCircuit(depth)
         params = self.getParametersToBind(angles, depth,asList=True)            
         if backend.configuration().local:
             job = execute(self.parameterized_circuit, backend, shots=shots, parameter_binds=[params])
@@ -262,6 +263,7 @@ class QAOABase:
 
     def hist(self, angles, backend, shots, noisemodel=None):
         depth=int(len(angles)/2)
+        self.createParameterizedCircuit(depth)
         
         params = self.getParametersToBind(angles, depth, asList=True)
         if backend.configuration().local:
