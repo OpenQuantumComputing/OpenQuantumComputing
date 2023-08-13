@@ -12,7 +12,7 @@ from qiskit.quantum_info import Statevector
 import sys
     # caution: path[0] is reserved for script path (or '' in REPL)
 
-from openquantumcomputing2.Mixer import *
+from openquantumcomputing.Mixer import *
 from openquantumcomputing.QAOAQUBO import QAOAQUBO
 
 
