@@ -2,25 +2,32 @@ from qiskit import *
 import numpy as np
 import math
 
+from qiskit.circuit import Parameter
+
 from openquantumcomputing.QAOABase import QAOABase
 
 class QAOAExactCover(QAOABase):
 
+    def __init__(self, params=None):
+        super().__init__(params=params)
+        self.FR = self.params.get('FR', None)
+        self.CR = self.params.get('CR', None)
+        self.mu = self.params.get('mu', 1)
+        self.N_qubits = self.params.get('instances')
+
     def __exactCover(self, x):
-        FR = self.params.get('FR', None)
-        Cexact = np.sum((1 - (FR @ x))**2)
+        Cexact = np.sum((1 - (self.FR @ x))**2)
         return Cexact
 
     def cost(self, string):
         x = np.array(list(map(int,string)))
         c_e = self.__exactCover(x)
-        CR = self.params.get('CR', None)
-        mu = self.params.get('mu', 1)
 
-        if CR is None:
+
+        if self.CR is None:
             return -c_e
         else:
-            return - (CR@x + mu*c_e)
+            return - (self.CR@x + self.mu*c_e)
 
     def isFeasible(self, string, feasibleOnly=False):
         x = np.array(list(map(int,string)))
@@ -30,48 +37,51 @@ class QAOAExactCover(QAOABase):
         else:
             return False
 
-    def createCircuit(self, angles, depth):
-        FR = self.params.get('FR', None)
-        CR = self.params.get('CR', None)
-        mu = self.params.get('mu', 1)
+
+    def create_cost_circuit(self, d, q):
+        """
+        Creates parameterized circuit corresponding to the cost function
+        """
+        
+        self.gamma_params[d] = Parameter('gamma_' + str(d))
         usebarrier = self.params.get('usebarrier', False)
-
-        F, R  = np.shape(FR)
-
-        q = QuantumRegister(R)
-        c = ClassicalRegister(R)
-        circ = QuantumCircuit(q, c)
-
-        ### initial state
-        circ.h(range(R))
-
         if usebarrier:
-            circ.barrier()
-        for d in range(depth):
-            gamma = angles[2 * d]
-            beta = angles[2 * d + 1]
-            ### cost Hamiltonian
-            for r in range(R):
-                hr = mu * 0.5 * FR[:,r] @ (np.sum(FR,axis = 1) - 2)
-                if not CR is None:
-                    hr += 0.5 * CR[r]
+            self.parameterized_circuit.barrier()
+        
+        F, R  = np.shape(self.FR)
+
+        ### cost Hamiltonian
+        for r in range(R):
+            hr = self.mu * 0.5 * self.FR[:,r] @ (np.sum(self.FR,axis = 1) - 2)
+            if not self.CR is None:
+                hr += 0.5 * self.CR[r]
 
 
-                if not math.isclose(hr, 0,abs_tol=1e-7):
-                    circ.rz( gamma * hr, q[r])
+            if not math.isclose(hr, 0,abs_tol=1e-7):
+                self.parameterized_circuit.rz( self.gamma_params[d] * hr, q[r])
 
-                for r_ in range(r+1,R):
-                    Jrr_  = mu*0.5 * FR[:,r] @ FR[:,r_]
+            for r_ in range(r+1,R):
+                Jrr_  = self.mu*0.5 * self.FR[:,r] @ self.FR[:,r_]
 
-                    if not math.isclose(Jrr_, 0,abs_tol=1e-7):
-                        circ.cx(q[r], q[r_])
-                        circ.rz(gamma * Jrr_, q[r_])
-                        circ.cx(q[r], q[r_])
-            if usebarrier:
-                circ.barrier()
-            ### mixer Hamiltonian
-            circ.rx(-2 * beta, range(R))
-            if usebarrier:
-                circ.barrier()
-        circ.measure(q, c)
-        return circ
+                if not math.isclose(Jrr_, 0,abs_tol=1e-7):
+                    self.parameterized_circuit.cx(q[r], q[r_])
+                    self.parameterized_circuit.rz(self.gamma_params[d] * Jrr_, q[r_])
+                    self.parameterized_circuit.cx(q[r], q[r_])
+        if usebarrier:
+            self.parameterized_circuit.barrier()
+
+
+
+    def create_mixer_circuit(self, d, q):
+        self.beta_params[d] = Parameter('beta_'+str(d))
+        q = QuantumRegister(self.N_qubits) 
+        c = ClassicalRegister(self.N_qubits)
+
+        self.mixer_circuit = QuantumCircuit(q, c)
+        self.mixer_circuit.rx(-2 * self.beta_params[d], range(self.N_qubits))
+        self.parameterized_circuit.compose(self.mixer_circuit, inplace = True)
+
+        usebarrier = self.params.get('usebarrier', False)
+        if usebarrier:
+            self.parameterized_circuit.barrier()
+

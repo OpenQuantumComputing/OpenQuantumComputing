@@ -93,8 +93,8 @@ class QAOAQUBO(QAOABase):
                     self.parameterized_circuit.cx(q[i], q[j])
                     self.parameterized_circuit.rz(self.gamma_params[d] * w_ij, q[j])
                     self.parameterized_circuit.cx(q[i], q[j])
-            if usebarrier:
-                self.parameterized_circuit.barrier()
+        if usebarrier:
+            self.parameterized_circuit.barrier()
 
 
     def create_mixer_circuit(self, d, q):
