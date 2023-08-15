@@ -38,12 +38,13 @@ class QAOAExactCover(QAOABase):
             return False
 
 
-    def create_cost_circuit(self, d, q):
+    def create_cost_circuit(self):
         """
         Creates parameterized circuit corresponding to the cost function
         """
-        
-        self.gamma_params[d] = Parameter('gamma_' + str(d))
+        q = QuantumRegister(self.N_qubits) 
+        self.cost_circuit = QuantumCircuit(q)
+        cost_param= Parameter('x_gamma')
         usebarrier = self.params.get('usebarrier', False)
         if usebarrier:
             self.parameterized_circuit.barrier()
@@ -58,30 +59,19 @@ class QAOAExactCover(QAOABase):
 
 
             if not math.isclose(hr, 0,abs_tol=1e-7):
-                self.parameterized_circuit.rz( self.gamma_params[d] * hr, q[r])
+                self.cost_circuit.rz( cost_param * hr, q[r])
 
             for r_ in range(r+1,R):
                 Jrr_  = self.mu*0.5 * self.FR[:,r] @ self.FR[:,r_]
 
                 if not math.isclose(Jrr_, 0,abs_tol=1e-7):
-                    self.parameterized_circuit.cx(q[r], q[r_])
-                    self.parameterized_circuit.rz(self.gamma_params[d] * Jrr_, q[r_])
-                    self.parameterized_circuit.cx(q[r], q[r_])
+                    self.cost_circuit.cx(q[r], q[r_])
+                    self.cost_circuit.rz(cost_param * Jrr_, q[r_])
+                    self.cost_circuit.cx(q[r], q[r_])
         if usebarrier:
-            self.parameterized_circuit.barrier()
+            self.cost_circuit.barrier()
 
 
 
-    def create_mixer_circuit(self, d, q):
-        self.beta_params[d] = Parameter('beta_'+str(d))
-        q = QuantumRegister(self.N_qubits) 
-        c = ClassicalRegister(self.N_qubits)
 
-        self.mixer_circuit = QuantumCircuit(q, c)
-        self.mixer_circuit.rx(-2 * self.beta_params[d], range(self.N_qubits))
-        self.parameterized_circuit.compose(self.mixer_circuit, inplace = True)
-
-        usebarrier = self.params.get('usebarrier', False)
-        if usebarrier:
-            self.parameterized_circuit.barrier()
 

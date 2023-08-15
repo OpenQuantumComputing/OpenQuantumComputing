@@ -2,6 +2,7 @@ from qiskit import *
 import numpy as np
 from scipy.optimize import minimize
 import math, time
+from qiskit.circuit import Parameter
 
 from openquantumcomputing.Statistic import Statistic
 
@@ -25,13 +26,15 @@ class QAOABase:
         self.gamma_grid=None
         self.beta_grid=None
         self.stat=Statistic(alpha=self.params.get('alpha', 1))
-        self.N_qubits = None #Needs to be initialized in a child class
+        self.N_qubits = None            #Needs to be initialized in a child class
 
         # Related to parameterized circuit
         self.parameterized_circuit = None
         self.current_circuit_depth = 0
         self.gamma_params = None
         self.beta_params = None
+        self.mixer_circuit = None
+        self.cost_circuit = None
 
         self.g_it=0
         self.g_values={}
@@ -52,28 +55,34 @@ class QAOABase:
 
 
 
-    def create_cost_circuit(self, depth, q):
+    def create_cost_circuit(self):
         """
-        Implements the function that adds the (parameterized) cost hamiltonian part, to the member variable
-        self.parameterized_circuit
-
-        :param depth: Depth index (look in createParameterizedCircuit)
-        :param q: Quantum register that the circuit will operate on
+        Implements the function that initializes the member variable
+        self.cost_circuit as a parameterized circuit
         
         """
         raise NotImplementedError
     
 
-    def create_mixer_circuit(self, depth, q):
+    def create_mixer_circuit(self):
         """
-        Implements the function that adds the (parameterized) mixer part of the circuit, to the member variable
-        self.parameterized_circuit
+        Implements the function that initializes the member variable
+        self.mixer_circuit as a parameterized circuit
 
-        :param depth: Depth index (look in createParameterizedCircuit)
-        :param q: Quantum register that the circuit will operatoe on
-
+        Overwritten in child classes where a constraint preserving mixer is used, for example the XY-mixer
         """
-        raise NotImplementedError
+
+        q = QuantumRegister(self.N_qubits) 
+        mixer_param = Parameter("x_beta")
+
+        self.mixer_circuit = QuantumCircuit(q)
+        self.mixer_circuit.rx(-2 * mixer_param, range(self.N_qubits))
+
+        usebarrier = self.params.get('usebarrier', False)
+        if usebarrier:
+           self.mixer_circuit.barrier()
+
+
 
 
     
@@ -103,20 +112,36 @@ class QAOABase:
 
         :param depth: depth of parameterized circuit
         """
+
+        if self.cost_circuit == None:
+            self.create_cost_circuit()
+
+        if self.mixer_circuit == None:
+            self.create_mixer_circuit()
+
         if self.current_circuit_depth !=depth:
+
             q = QuantumRegister(self.N_qubits)
             c = ClassicalRegister(self.N_qubits)    
             self.parameterized_circuit = QuantumCircuit(q, c)
+            
             self.gamma_params = [None]*depth
             self.beta_params = [None]*depth
 
             ### Initial state
             self.setToInitialState(q)    
 
-            for d in range(depth):               
-                self.create_cost_circuit(d, q) #abstract function, adds qiskit parameters to self.parameterized_circuit and self.gamma_params
-                self.create_mixer_circuit(d, q) #abstract function, adds qiskit parameters to self.parameterized_circuit and self.beta_params
-                
+            for d in range(depth):
+
+                self.gamma_params[d] = Parameter('gamma_'+ str(d))
+                cost_circuit = self.cost_circuit.assign_parameters({self.cost_circuit.parameters[0]: self.gamma_params[d]}, inplace = False)
+                self.parameterized_circuit.compose(cost_circuit, inplace = True)
+
+                self.beta_params[d]  = Parameter('beta_' + str(d))
+                mixer_circuit = self.mixer_circuit.assign_parameters({self.mixer_circuit.parameters[0]: self.beta_params[d]}, inplace = False) 
+                self.parameterized_circuit.compose(mixer_circuit, inplace = True)               
+
+            self.parameterized_circuit.barrier()
             self.parameterized_circuit.measure(q, c)
             self.current_circuit_depth = depth
         else:

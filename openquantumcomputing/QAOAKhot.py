@@ -37,20 +37,23 @@ class QAOAKhot(QAOAConstrainedQUBO):
         else:
             return False
         
-    def computeBestMixer(self):
+    def create_mixer_circuit(self):
         #Overrides this function of QAOAConstrainedQUBO for the k-hot problem where structure of mixer is known
-        if not self.best_mixer_terms:
-            q = QuantumRegister(self.N_qubits) 
-            c = ClassicalRegister(self.N_qubits)
-            self.mixer_circuit = QuantumCircuit(q, c)
-            self.best_mixer_terms, self.logical_X_operators = self.__XYMixerTerms()
 
-            Beta = Parameter('Beta')
-            scale = 0.5 #Since every logical X has two stabilizers 
-            for i in range(self.N_qubits-1):
-                #Hard coded XY mixer
-                current_gate = XXPlusYYGate(scale*Beta)
-                self.mixer_circuit.append(current_gate, [i, i+1])
+        q = QuantumRegister(self.N_qubits) 
+        self.mixer_circuit = QuantumCircuit(q)
+        self.best_mixer_terms, self.logical_X_operators = self.__XYMixerTerms()
+
+        Beta = Parameter('x_beta')
+        scale = 0.5 #Since every logical X has two stabilizers 
+        for i in range(self.N_qubits-1):
+            #Hard coded XY mixer
+            current_gate = XXPlusYYGate(scale*Beta)
+            self.mixer_circuit.append(current_gate, [i, i+1])
+
+        usebarrier = self.params.get('usebarrier', False)
+        if usebarrier:
+            self.mixer_circuit.barrier()
 
 
                 

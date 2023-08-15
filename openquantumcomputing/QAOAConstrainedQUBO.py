@@ -38,36 +38,23 @@ class QAOAConstrainedQUBO(QAOAQUBO):
 
 
 
-    def create_mixer_circuit(self, d, q):  
+    def create_mixer_circuit(self):  
 
-        if not self.best_mixer_terms:
-            self.computeBestMixer()
+        if not self.B:
+            self.computeFeasibleSubspace()
 
-        self.beta_params[d]  = Parameter('beta_' + str(d))
-        c = self.mixer_circuit.assign_parameters({self.mixer_circuit.parameters[0]: self.beta_params[d]}, inplace = False) 
-        self.parameterized_circuit.compose(c, inplace = True)
+        m = Mixer(self.B, sort = True)
+        m.compute_commuting_pairs()
+        m.compute_family_of_graphs()
+        m.get_best_mixer_commuting_graphs(reduced = self.reduced)
+        self.mixer_circuit, self.best_mixer_terms, self.logical_X_operators= m.compute_parametrized_circuit(self.reduced)
 
         usebarrier = self.params.get('usebarrier', False)
         if usebarrier:
-            self.parameterized_circuit.barrier()
+            self.mixer_circuit.barrier()
 
 
 
-    
-
-    def computeBestMixer(self):
-        if not self.B:
-            self.computeFeasibleSubspace()
-        if not self.best_mixer_terms:
-                
-            m = Mixer(self.B, sort = True)
-            m.compute_commuting_pairs()
-            m.compute_family_of_graphs()
-            m.get_best_mixer_commuting_graphs(reduced = self.reduced)
-            self.mixer_circuit, self.best_mixer_terms, self.logical_X_operators= m.compute_parametrized_circuit(self.reduced)
-        else:
-            #has already computed mixer
-            pass
 
     def computeFeasibleSubspace(self):
         """

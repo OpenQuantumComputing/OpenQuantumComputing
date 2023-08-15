@@ -14,13 +14,12 @@ class QAOAPortfolioOptimization_mixer(QAOAKhot):
 
     def __init__(self, params=None):
         super().__init__(params=params)
-
+        
         self.__checkParams()
         self.risk = params.get("risk")
         self.budget = params.get("budget")
         self.cov_matrix = params.get("cov_matrix")
         self.exp_return = params.get("exp_return")
-        self.penalty = params.get("penalty", 0.0)
         self.N_qubits = len(self.exp_return)
 
         
