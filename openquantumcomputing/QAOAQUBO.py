@@ -59,24 +59,26 @@ class QAOAQUBO(QAOABase):
         return - (x.T@self.QUBO_Q@x + self.QUBO_c.T@x + self.QUBO_b)
     
 
-    def create_cost_circuit(self,d, q):
+    def create_cost_circuit(self):
         if self.lower_triangular_Q:
-            self._createParameterizedCostCircuitTril(d, q)
+            self._createParameterizedCostCircuitTril()
         else:
             #Not lower triangular Q matrix
             raise NotImplementedError
         
 
 
-    def _createParameterizedCostCircuitTril(self, d, q):
+    def _createParameterizedCostCircuitTril(self):
         """
         Creates a parameterized circuit of the triangularized QUBO problem.
         """
+        q = QuantumRegister(self.N_qubits) 
+        self.cost_circuit = QuantumCircuit(q)
+        cost_param = Parameter("x_gamma")
 
-        self.gamma_params[d] = Parameter('gamma_'+ str(d))
         usebarrier = self.params.get('usebarrier', False)
         if usebarrier:
-            self.parameterized_circuit.barrier()
+            self.cost_circuit.barrier()
 
         ### cost Hamiltonian
         for i in range(self.N_qubits):
@@ -84,31 +86,20 @@ class QAOAQUBO(QAOABase):
             
 
             if not math.isclose(w_i, 0,abs_tol=1e-7):
-                self.parameterized_circuit.rz( self.gamma_params[d] * w_i, q[i])
+                self.cost_circuit.rz( cost_param * w_i, q[i])
 
             for j in range(i+1, self.N_qubits):
                 w_ij = 0.25*self.QUBO_Q[j][i]
 
                 if not math.isclose(w_ij, 0,abs_tol=1e-7):
-                    self.parameterized_circuit.cx(q[i], q[j])
-                    self.parameterized_circuit.rz(self.gamma_params[d] * w_ij, q[j])
-                    self.parameterized_circuit.cx(q[i], q[j])
+                    self.cost_circuit.cx(q[i], q[j])
+                    self.cost_circuit.rz(cost_param * w_ij, q[j])
+                    self.cost_circuit.cx(q[i], q[j])
         if usebarrier:
-            self.parameterized_circuit.barrier()
+            self.cost_circuit.barrier()
 
 
-    def create_mixer_circuit(self, d, q):
-        self.beta_params[d] = Parameter('beta_'+str(d))
-        q = QuantumRegister(self.N_qubits) 
-        c = ClassicalRegister(self.N_qubits)
-
-        self.mixer_circuit = QuantumCircuit(q, c)
-        self.mixer_circuit.rx(-2 * self.beta_params[d], range(self.N_qubits))
-        self.parameterized_circuit.compose(self.mixer_circuit, inplace = True)
-
-        usebarrier = self.params.get('usebarrier', False)
-        if usebarrier:
-            self.parameterized_circuit.barrier()
+        
 
         
 
