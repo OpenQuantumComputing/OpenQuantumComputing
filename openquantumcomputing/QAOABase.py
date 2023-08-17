@@ -357,9 +357,7 @@ class QAOABase:
                             self.beta_params[0]: beta}
                     
             print("Executing sample_cost_landscape")
-            print("parameters: ", len(parameters), len(parameters[self.gamma_params[0]]))
-            if (len(parameters[self.gamma_params[0]]) < 15):
-                print(parameters)
+            print("parameters: ", len(parameters))
             job = execute(self.parameterized_circuit, backend, shots=shots, 
                             parameter_binds=[parameters], optimization_level=0)
             print("Done execute")
