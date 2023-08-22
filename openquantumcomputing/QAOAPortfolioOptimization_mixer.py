@@ -1,30 +1,42 @@
 from qiskit import *
 import numpy as np
 import math
+import itertools
 
-from openquantumcomputing.QAOAQUBO import QAOAQUBO
+#from openquantumcomputing.QAOAQUBO import QAOAQUBO
 
-class QAOAPortfolioOptimization(QAOAQUBO):
+import sys
+    # caution: path[0] is reserved for script path (or '' in REPL)
+
+from openquantumcomputing.QAOAKhot import QAOAKhot
+
+class QAOAPortfolioOptimization_mixer(QAOAKhot):
 
     def __init__(self, params=None):
         super().__init__(params=params)
-
+        
         self.__checkParams()
         self.risk = params.get("risk")
         self.budget = params.get("budget")
         self.cov_matrix = params.get("cov_matrix")
         self.exp_return = params.get("exp_return")
-        self.penalty = params.get("penalty", 0.0)
         self.N_qubits = len(self.exp_return)
+
+        
+
 
         # Reformulated as a QUBO
         # min x^T Q x + c^T x + b
         # Writing Q as lower triangular matrix since it otherwise is symmetric
-        Q = self.risk * np.tril(self.cov_matrix + np.tril(self.cov_matrix, k=-1)) \
-                        + self.penalty*(np.eye(self.N_qubits) + 2* np.tril(np.ones((self.N_qubits, self.N_qubits)), k=-1))
-        c = - self.exp_return - (2*self.penalty*self.budget*np.ones_like(self.exp_return))
-        b = self.penalty*self.budget*self.budget
+        #Q = self.risk * np.tril(self.cov_matrix + np.tril(self.cov_matrix, k=-1)) \
+        #               + self.penalty*(np.eye(self.N_assets) + 2* np.tril(np.ones((self.N_assets, self.N_assets)), k=-1))
+        #c = - self.exp_return - (2*self.penalty*self.budget*np.ones_like(self.exp_return))
+        #b = self.penalty*self.budget*self.budget 
 
+        #penalty term set to 0 for constraint preserving mixer class
+        Q = self.risk * np.tril(self.cov_matrix + np.tril(self.cov_matrix, k=-1)) 
+        c = -self.exp_return
+        b = 0
         self._init_QUBO(Q=Q, c=c, b=b)
 
 
@@ -40,21 +52,6 @@ class QAOAPortfolioOptimization(QAOAQUBO):
             "bitstring  " + s + " of wrong size. Expected " + str(len(self.params.get("exp_return"))) + " but got " + str(len(x))
         return x
 
-    def cost_nonQUBO(self, string, penalize=True):
-        
-        risk       = self.params.get("risk")
-        budget     = self.params.get("budget")
-        cov_matrix = self.params.get("cov_matrix")
-        exp_return = self.params.get("exp_return")
-        penalty    = self.params.get("penalty", 0.0)
-
-        x = np.array(list(map(int,string)))        
-        cost = risk* (x.T@cov_matrix@x) - exp_return.T@x
-        if penalize:
-            cost += penalty * (x.sum() - budget)**2
-
-        return -cost
-
 
     def isFeasible(self, string, feasibleOnly=False):
         x = self.__str2np(string)
@@ -63,5 +60,8 @@ class QAOAPortfolioOptimization(QAOAQUBO):
             return True
         else:
             return False
+        
 
-  
+
+
+

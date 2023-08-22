@@ -17,7 +17,7 @@ class QAOAQUBO(QAOABase):
 
         :param params: additional parameters
         """
-        super(QAOAQUBO, self).__init__(params=params)
+        super().__init__(params=params)
 
         self.parameterized = False
         self.QUBO_Q = None 
@@ -57,93 +57,51 @@ class QAOAQUBO(QAOABase):
     def cost(self, string):
         x = np.array(list(map(int, string)))
         return - (x.T@self.QUBO_Q@x + self.QUBO_c.T@x + self.QUBO_b)
-
-    def createCircuit(self, angles, depth):
-        if self.lower_triangular_Q:
-            return self._createCircuitTril(angles, depth)
-        else:
-            return self._createCircuitFull(angles, depth)
-      
-
-    def _createCircuitTril(self, angles, depth):
-        
-        usebarrier = self.params.get('usebarrier', False)
-
-        q = QuantumRegister(self.N_assets)
-        c = ClassicalRegister(self.N_assets)
-        circ = QuantumCircuit(q, c)
-
-        ### initial state
-        circ.h(range(self.N_assets))
-
-        if usebarrier:
-            circ.barrier()
-        for d in range(depth):
-            gamma = angles[2 * d]
-            beta = angles[2 * d + 1]
-            ### cost Hamiltonian
-            for i in range(self.N_assets):
-                w_i = 0.5 * (self.QUBO_c[i] + np.sum(self.QUBO_Q[:, i]))
-                
-
-                if not math.isclose(w_i, 0,abs_tol=1e-7):
-                    circ.rz( gamma * w_i, q[i])
-
-                for j in range(i+1, self.N_assets):
-                    w_ij = 0.25*self.QUBO_Q[j][i]
-
-                    if not math.isclose(w_ij, 0,abs_tol=1e-7):
-                        circ.cx(q[i], q[j])
-                        circ.rz(gamma * w_ij, q[j])
-                        circ.cx(q[i], q[j])
-                if usebarrier:
-                    circ.barrier()
-            ### mixer Hamiltonian
-            circ.rx(-2 * beta, range(self.N_assets))
-            if usebarrier:
-                circ.barrier()
-        circ.measure(q, c)
-        return circ
-
-
-    def _createCircuitFull(self, angles, depth):
-        raise NotImplementedError 
     
+
+    def create_cost_circuit(self):
+        if self.lower_triangular_Q:
+            self._createParameterizedCostCircuitTril()
+        else:
+            #Not lower triangular Q matrix
+            raise NotImplementedError
+        
+
+
+    def _createParameterizedCostCircuitTril(self):
+        """
+        Creates a parameterized circuit of the triangularized QUBO problem.
+        """
+        q = QuantumRegister(self.N_qubits) 
+        self.cost_circuit = QuantumCircuit(q)
+        cost_param = Parameter("x_gamma")
+
         usebarrier = self.params.get('usebarrier', False)
-
-        q = QuantumRegister(self.N_assets)
-        c = ClassicalRegister(self.N_assets)
-        circ = QuantumCircuit(q, c)
-
-        ### initial state
-        circ.h(range(self.N_assets))
-
         if usebarrier:
-            circ.barrier()
-        for d in range(depth):
-            gamma = angles[2 * d]
-            beta = angles[2 * d + 1]
-            ### cost Hamiltonian
-            for i in range(self.N_assets):
-                w_i = 0.5 * (self.QUBO_c[i] + np.sum(self.QUBO_Q[:, i]))
-                
+            self.cost_circuit.barrier()
 
-                if not math.isclose(w_i, 0,abs_tol=1e-7):
-                    circ.rz( gamma * w_i, q[i])
+        ### cost Hamiltonian
+        for i in range(self.N_qubits):
+            w_i = 0.5 * (self.QUBO_c[i] + np.sum(self.QUBO_Q[:, i]))
+            
 
-                for j in range(i+1, self.N_assets):
-                    w_ij = 0.25*self.QUBO_Q[j][i]
+            if not math.isclose(w_i, 0,abs_tol=1e-7):
+                self.cost_circuit.rz( cost_param * w_i, q[i])
 
-                    if not math.isclose(w_ij, 0,abs_tol=1e-7):
-                        circ.cx(q[i], q[j])
-                        circ.rz(gamma * w_ij, q[j])
-                        circ.cx(q[i], q[j])
-                if usebarrier:
-                    circ.barrier()
-            ### mixer Hamiltonian
-            circ.rx(-2 * beta, range(self.N_assets))
-            if usebarrier:
-                circ.barrier()
-        circ.measure(q, c)
-        return circ
+            for j in range(i+1, self.N_qubits):
+                w_ij = 0.25*self.QUBO_Q[j][i]
 
+                if not math.isclose(w_ij, 0,abs_tol=1e-7):
+                    self.cost_circuit.cx(q[i], q[j])
+                    self.cost_circuit.rz(cost_param * w_ij, q[j])
+                    self.cost_circuit.cx(q[i], q[j])
+        if usebarrier:
+            self.cost_circuit.barrier()
+
+
+        
+
+        
+
+
+   
