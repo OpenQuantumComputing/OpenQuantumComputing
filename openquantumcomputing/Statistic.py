@@ -1,5 +1,6 @@
 import numpy as np
 
+
 class Statistic:
     """
     See: https://fanf2.user.srcf.net/hermes/doc/antiforgery/stats.pdf
@@ -10,30 +11,32 @@ class Statistic:
         self.reset()
 
     def reset(self):
-        self.W=0
-        self.E=0
-        self.S=0
-        self.all_values=np.array([])
+        self.W = 0
+        self.E = 0
+        self.S = 0
+        self.all_values = np.array([])
 
     def add_sample(self, value, weight):
-        self.W+=weight
-        tmp_E=self.E
-        self.E+=weight/self.W*(value-self.E)
-        self.S+=weight*(value-tmp_E)*(value-self.E)
+        self.W += weight
+        tmp_E = self.E
+        self.E += weight / self.W * (value - self.E)
+        self.S += weight * (value - tmp_E) * (value - self.E)
         if self.alpha < 1:
             idx = np.searchsorted(self.all_values, value)
-            self.all_values = np.insert(self.all_values, idx, np.ones(int(weight))*value)
+            self.all_values = np.insert(
+                self.all_values, idx, np.ones(int(weight)) * value
+            )
 
     def get_E(self):
         return self.E
 
     def get_Variance(self):
-        return self.S/(self.W-1)
+        return self.S / (self.W - 1)
 
     def get_CVaR(self):
         if self.alpha < 1:
-            alphaK = int(np.round(self.alpha*len(self.all_values)))
-            cvar = np.sum(self.all_values[-alphaK:])/alphaK
+            alphaK = int(np.round(self.alpha * len(self.all_values)))
+            cvar = np.sum(self.all_values[-alphaK:]) / alphaK
             return cvar
         else:
             return self.get_E()
