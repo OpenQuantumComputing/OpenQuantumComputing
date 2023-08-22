@@ -1,8 +1,8 @@
 from qiskit import *
 import numpy as np
-from scipy.optimize import minimize
 import math, time
 from qiskit.circuit import Parameter
+from qiskit_algorithms.optimizers import COBYLA  ### pip install qiskit-algorithms
 
 from openquantumcomputing.Statistic import Statistic
 
@@ -13,10 +13,26 @@ class QAOABase:
         init function that initializes member variables
 
         :param params: additional parameters
+
+        :param backend: backend
+        :param shots: if precision=None, the number of samples taken
+                      if precision!=None, the minimum number of samples taken
+        :param precision: precision to reach for expectation value based on error=variance/sqrt(shots)
         """
         self.params = params
         self.E = None
+
         self.Var = None
+
+        cobyla = COBYLA()
+        self.optimizer = self.params.get("optimizer", cobyla)
+
+        qasm_sim = Aer.get_backend("qasm_simulator")
+        self.backend = self.params.get("backend", qasm_sim)
+        self.shots = self.params.get("shots", 1024)
+        self.noisemodel = self.params.get("noisemodel", None)
+        self.precision = self.params.get("precision", None)
+
         self.current_depth = 0  # depth at which local optimization has been done
         self.angles_hist = {}  # initial and final angles during optimization per depth
         self.num_fval = {}  # number of function evaluations per depth
@@ -32,7 +48,7 @@ class QAOABase:
 
         # Related to parameterized circuit
         self.parameterized_circuit = None
-        self.current_circuit_depth = 0
+        self.parametrized_circuit_depth = 0
         self.gamma_params = None
         self.beta_params = None
         self.mixer_circuit = None
@@ -110,7 +126,7 @@ class QAOABase:
         if self.mixer_circuit == None:
             self.create_mixer_circuit()
 
-        if self.current_circuit_depth != depth:
+        if self.parametrized_circuit_depth != depth:
             q = QuantumRegister(self.N_qubits)
             c = ClassicalRegister(self.N_qubits)
             self.parameterized_circuit = QuantumCircuit(q, c)
@@ -138,7 +154,7 @@ class QAOABase:
 
             self.parameterized_circuit.barrier()
             self.parameterized_circuit.measure(q, c)
-            self.current_circuit_depth = depth
+            self.parametrized_circuit_depth = depth
         else:
             # Dont need to do anything if current circuit is the correct depth
             pass
@@ -149,23 +165,27 @@ class QAOABase:
         """
         return True
 
-    def successProbability(self, angles, backend, shots, noisemodel=None):
+    def successProbability(self, angles):
         """
         success is defined through cost function to be equal to 0
         """
         depth = int(len(angles) / 2)
         self.createParameterizedCircuit(depth)
         params = self.getParametersToBind(angles, depth, asList=True)
-        if backend.configuration().local:
+        if self.backend.configuration().local:
             job = execute(
                 self.parameterized_circuit,
-                backend,
-                shots=shots,
+                self.backend,
+                shots=self.shots,
                 parameter_binds=[params],
+                optimization_level=0,
             )
         else:
             job = start_or_retrieve_job(
-                "sprob", backend, self.parameterized_circuit, options={"shots": shots}
+                "sprob",
+                self.backend,
+                self.parameterized_circuit,
+                options={"shots": self.shots},
             )  # Now sending in a parameterized circuit here
 
         jres = job.result()
@@ -185,7 +205,7 @@ class QAOABase:
                 # qiskit binary strings use little endian encoding, but our cost function expects big endian encoding. Therefore, we reverse the order
                 if self.isFeasible(string[::-1]):
                     s_prob += counts_list[string]
-        return s_prob / shots
+        return s_prob / self.shots
 
     def getParametersToBind(self, angles, depth, asList=False):
         """
@@ -217,25 +237,30 @@ class QAOABase:
         params = self.getParametersToBind(angles, depth)
         return self.parameterized_circuit.bind_parameters(params)
 
-    def loss(self, angles, backend, depth, shots, precision, noisemodel):
+    def loss(self, angles):
         """
         loss function
         :return: an instance of the qiskit class QuantumCircuit
         """
         self.g_it += 1
 
+        # depth = int(len(angles) / 2)
+
         circuit = None
-        n_target = shots
+        n_target = self.shots
         self.stat.reset()
         shots_taken = 0
+        shots = self.shots
 
         for i in range(3):
-            if backend.configuration().local:
-                params = self.getParametersToBind(angles, depth, asList=True)
+            if self.backend.configuration().local:
+                params = self.getParametersToBind(
+                    angles, self.parametrized_circuit_depth, asList=True
+                )
                 job = execute(
                     self.parameterized_circuit,
-                    backend=backend,
-                    noise_model=noisemodel,
+                    backend=self.backend,
+                    noise_model=self.noisemodel,
                     shots=shots,
                     parameter_binds=[params],
                     optimization_level=0,
@@ -244,17 +269,17 @@ class QAOABase:
                 name = ""
                 job = start_or_retrieve_job(
                     name + "_" + str(opt_iterations),
-                    backend,
+                    self.backend,
                     circuit,
                     options={"shots": shots},
                 )
             shots_taken += shots
             _, _ = self.measurementStatistics(job)
-            if precision is None:
+            if self.precision is None:
                 break
             else:
                 v = self.stat.get_Variance()
-                shots = int((np.sqrt(v) / precision) ** 2) - shots_taken
+                shots = int((np.sqrt(v) / self.precision) ** 2) - shots_taken
                 if shots <= 0:
                     break
 
@@ -295,20 +320,23 @@ class QAOABase:
                 self.stat.add_sample(cost, counts_list[string])
             return self.stat.get_CVaR(), self.stat.get_Variance()
 
-    def hist(self, angles, backend, shots, noisemodel=None):
+    def hist(self, angles):
         depth = int(len(angles) / 2)
         self.createParameterizedCircuit(depth)
 
         params = self.getParametersToBind(angles, depth, asList=True)
-        if backend.configuration().local:
+        if self.backend.configuration().local:
             job = execute(
                 self.parameterized_circuit,
-                backend,
-                shots=shots,
+                self.backend,
+                shots=self.shots,
                 parameter_binds=[params],
+                optimization_level=0,
             )
         else:
-            job = start_or_retrieve_job("hist", backend, circ, options={"shots": shots})
+            job = start_or_retrieve_job(
+                "hist", self.backend, circ, options={"shots": self.shots}
+            )
         return job.result().get_counts()
 
     def random_init(self, gamma_bounds, beta_bounds, depth):
@@ -342,9 +370,6 @@ class QAOABase:
 
     def sample_cost_landscape(
         self,
-        backend,
-        shots=1024,
-        noisemodel=None,
         verbose=True,
         angles={"gamma": [0, 2 * np.pi, 20], "beta": [0, 2 * np.pi, 20]},
     ):
@@ -358,7 +383,7 @@ class QAOABase:
         tmp = angles["beta"]
         self.beta_grid = np.linspace(tmp[0], tmp[1], tmp[2])
 
-        if backend.configuration().local:
+        if self.backend.configuration().local:
             self.createParameterizedCircuit(depth)
             # parameters = []
             gamma = [None] * angles["beta"][2] * angles["gamma"][2]
@@ -377,8 +402,8 @@ class QAOABase:
             print("parameters: ", len(parameters))
             job = execute(
                 self.parameterized_circuit,
-                backend,
-                shots=shots,
+                self.backend,
+                shots=self.shots,
                 parameter_binds=[parameters],
                 optimization_level=0,
             )
@@ -400,9 +425,9 @@ class QAOABase:
                     name = ""
                     job = start_or_retrieve_job(
                         name + "_" + str(b) + "_" + str(g),
-                        backend,
+                        self.backend,
                         self.parameterized_circuit,
-                        options={"shots": shots},
+                        options={"shots": self.shots},
                     )  # Now takes in parameterized_circuit
                     e, v = self.measurementStatistics(job)
                     self.E[b, g] = -e[0]
@@ -412,47 +437,25 @@ class QAOABase:
         if verbose:
             print("Calculating Energy landscape done")
 
-    def get_current_deptgh(self):
-        return self.current_depth
-
-    def local_opt(
-        self, angles0, backend, shots, precision, noisemodel=None, method="COBYLA"
-    ):
+    def local_opt(self, angles0):
         """
 
         :param angles0: initial guess
         """
 
-        depth = int(len(angles0) / 2)
-
         self.num_shots["d" + str(self.current_depth + 1)] = 0
-        res = minimize(
-            self.loss,
-            x0=angles0,
-            method=method,
-            args=(backend, depth, shots, precision, noisemodel),
-        )
+        res = self.optimizer.minimize(self.loss, x0=angles0)
         return res
 
-    def increase_depth(
-        self, backend, shots=1024, precision=None, noisemodel=None, method="COBYLA"
-    ):
+    def increase_depth(self):
         """
         sample cost landscape
-
-        :param backend: backend
-        :param shots: if precision=None, the number of samples taken
-                      if precision!=None, the minimum number of samples taken
-        :param precision: precision to reach for expectation value based on error=variance/sqrt(shots)
         """
 
         t_start = time.time()
         if self.current_depth == 0:
             if self.E is None:
                 self.sample_cost_landscape(
-                    backend,
-                    shots,
-                    noisemodel=noisemodel,
                     angles={"gamma": [0, 2 * np.pi, 20], "beta": [0, 2 * np.pi, 20]},
                 )
             ind_Emin = np.unravel_index(np.argmin(self.E, axis=None), self.E.shape)
@@ -478,11 +481,9 @@ class QAOABase:
             int(len(angles0) / 2)
         )  # Create parameterized circuit at new depth
 
-        res = self.local_opt(
-            angles0, backend, shots, precision, noisemodel=noisemodel, method=method
-        )
-        if not res.success:
-            raise Warning("Local optimization was not successful.", res)
+        res = self.local_opt(angles0)
+        # if not res.success:
+        #    raise Warning("Local optimization was not successful.", res)
         self.num_fval["d" + str(self.current_depth + 1)] = res.nfev
         self.t_per_fval["d" + str(self.current_depth + 1)] = (
             time.time() - t_start
