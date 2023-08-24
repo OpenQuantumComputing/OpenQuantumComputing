@@ -2,7 +2,8 @@ from qiskit import *
 import numpy as np
 import math, time
 from qiskit.circuit import Parameter
-from qiskit_algorithms.optimizers import COBYLA  ### pip install qiskit-algorithms
+from qiskit_algorithms.optimizers import *  ### pip install qiskit-algorithms
+from qiskit.primitives import Sampler
 
 from openquantumcomputing.Statistic import Statistic
 
@@ -23,9 +24,9 @@ class QAOABase:
         self.E = None
 
         self.Var = None
+        self.isQNSPSA = False
 
-        cobyla = COBYLA()
-        self.optimizer = self.params.get("optimizer", cobyla)
+        self.optimizer = self.params.get("optimizer", [COBYLA, {}])
 
         qasm_sim = Aer.get_backend("qasm_simulator")
         self.backend = self.params.get("backend", qasm_sim)
@@ -444,7 +445,18 @@ class QAOABase:
         """
 
         self.num_shots["d" + str(self.current_depth + 1)] = 0
-        res = self.optimizer.minimize(self.loss, x0=angles0)
+
+        try:
+            opt = self.optimizer[0](**self.optimizer[1])
+        except TypeError as e:  ### QNSPSA needs fidelity
+            self.isQNSPSA=True
+            self.optimizer[1]["fidelity"] = self.optimizer[0].get_fidelity(
+                self.parameterized_circuit, sampler=Sampler()
+            )
+            opt = self.optimizer[0](**self.optimizer[1])
+        res = opt.minimize(self.loss, x0=angles0)
+        if self.isQNSPSA:
+            self.optimizer[1].pop("fidelity")
         return res
 
     def increase_depth(self):
@@ -476,10 +488,8 @@ class QAOABase:
         self.g_it = 0
         self.g_values = {}
         self.g_angles = {}
-
-        self.createParameterizedCircuit(
-            int(len(angles0) / 2)
-        )  # Create parameterized circuit at new depth
+        # Create parameterized circuit at new depth
+        self.createParameterizedCircuit(int(len(angles0) / 2))
 
         res = self.local_opt(angles0)
         # if not res.success:
